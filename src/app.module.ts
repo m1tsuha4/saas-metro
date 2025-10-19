@@ -9,6 +9,10 @@ import { WinstonLoggerService } from './common/services/winston-logger.service';
 import { LoggingMiddleware } from './common/middlewares/logging.middleware';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { ContactModule } from './contact/contact.module';
+import { WaController } from './wa/wa.controller';
+import { WaService } from './wa/wa.service';
+import { WaModule } from './wa/wa.module';
 @Module({
   imports: [
     PrismaModule,
@@ -22,9 +26,11 @@ import { join } from 'path';
     }),
     UserModule,
     AuthModule,
+    ContactModule,
+    WaModule,
   ],
-  controllers: [AppController],
-  providers: [AppService, WinstonLoggerService],
+  controllers: [AppController, WaController],
+  providers: [AppService, WinstonLoggerService, WaService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
