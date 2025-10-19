@@ -77,3 +77,32 @@ model WhatsAppContact {
   updatedAt DateTime  @updatedAt
 }
 
+model WaCampaign {
+  id          String   @id @default(cuid())
+  sessionId   String
+  type        String   // TEXT | IMAGE
+  text        String?
+  imageUrl    String?
+  delayMs     Int      @default(1000) // jarak kirim
+  jitterMs    Int      @default(500)  // +/- random
+  createdAt   DateTime @default(now())
+  messages    WhatsAppMessage[]
+}
+
+model WhatsAppMessage {
+  id            String   @id @default(cuid())
+  contactId     String?
+  phone         String
+  sessionId     String
+  campaignId    String?
+  direction     String   // OUTGOING
+  text          String?
+  mediaUrl      String?
+  status        String   // SENT | FAILED
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  campaign WaCampaign? @relation(fields:[campaignId], references:[id])
+}
+

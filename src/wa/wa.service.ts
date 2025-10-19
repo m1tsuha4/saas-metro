@@ -11,12 +11,49 @@ import * as qrcode from 'qrcode';
 import pino from 'pino';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import axios from 'axios';
 
 type SessionRuntime = {
   qr?: string;                             
   sock?: ReturnType<typeof makeWASocket>;
   ready: boolean;
 };
+
+type BroadcastTextInput = {
+  sessionId: string;
+  recipients: string[];
+  text: string;
+  delayMs: number;
+  jitterMs: number;
+  checkNumber: boolean;
+};
+
+type BroadcastImageInput = {
+  sessionId: string;
+  recipients: string[];
+  caption?: string;
+  imageUrl: string;
+  delayMs: number;
+  jitterMs: number;
+  checkNumber: boolean;
+};
+
+function sleep(ms: number) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
+function withJitter(base: number, jitter: number) {
+  if (jitter <= 0) return base;
+  const delta = Math.floor((Math.random() * 2 - 1) * jitter);
+  return Math.max(0, base + delta);
+}
+
+function countStatuses(items: {status:string}[]) {
+  return items.reduce((acc, it) => {
+    acc[it.status] = (acc[it.status] || 0) as number + 1;
+    return acc;
+  }, {} as Record<string, number>);
+}
 
 @Injectable()
 export class WaService {
@@ -202,8 +239,261 @@ export class WaService {
     return { success: true };
   }
 
+  async broadcastText(dto: BroadcastTextInput) {
+    const { sessionId, recipients, text, delayMs, jitterMs, checkNumber } = dto;
+
+    const rt = this.sessions.get(sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+
+    // optional: create a campaign row
+    let campaignId: string | undefined;
+    try {
+      const camp = await this.prisma.waCampaign.create({
+        data: { sessionId, type: 'TEXT', text, delayMs, jitterMs },
+        select: { id: true },
+      });
+      campaignId = camp.id;
+    } catch { /* schema optional */ }
+
+    const results: Array<{ phone: string; status: 'SENT'|'SKIPPED'|'FAILED'; error?: string }> = [];
+
+    for (const raw of recipients) {
+      const phone = raw.replace(/[^\d]/g, '');
+      try {
+        if (checkNumber) {
+          const check = await this.checkNumber(sessionId, phone);
+          if (!check.exists) {
+            results.push({ phone, status: 'SKIPPED', error: 'Not on WhatsApp' });
+            // optional: mark contact inactive in DB
+            await this.prisma.whatsAppMessage?.create?.({
+              data: { phone, sessionId, campaignId, direction: 'OUTGOING', text, status: 'FAILED', errorMessage: 'Not on WhatsApp' }
+            }).catch(() => {});
+            continue;
+          }
+        }
+
+        const sendRes = await this.sendText(sessionId, phone, text);
+        results.push({ phone, status: 'SENT' });
+
+        await this.prisma.whatsAppMessage?.create?.({
+          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text, status: 'SENT' }
+        }).catch(() => {});
+
+        await sleep(withJitter(delayMs, jitterMs)); // atur jarak kirim
+      } catch (e: any) {
+        const msg = e?.message || 'Send failed';
+        results.push({ phone, status: 'FAILED', error: msg });
+        await this.prisma.whatsAppMessage?.create?.({
+          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text, status: 'FAILED', errorMessage: msg }
+        }).catch(() => {});
+        // backoff a bit before next number
+        await sleep(withJitter(Math.max(delayMs, 1200), jitterMs));
+      }
+    }
+
+    return { campaignId, total: recipients.length, summary: countStatuses(results), results };
+  }
+
+  async broadcastImage(dto: BroadcastImageInput) {
+    const { sessionId, recipients, caption, imageUrl, delayMs, jitterMs, checkNumber } = dto;
+
+    const rt = this.sessions.get(sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+
+    // prefetch the image once (to avoid downloading for every recipient)
+    const imgBuf = await this.fetchImageBuffer(imageUrl);
+
+    // optional: campaign row
+    let campaignId: string | undefined;
+    try {
+      const camp = await this.prisma.waCampaign.create({
+        data: { sessionId, type: 'IMAGE', imageUrl, text: caption ?? null, delayMs, jitterMs },
+        select: { id: true },
+      });
+      campaignId = camp.id;
+    } catch {}
+
+    const results: Array<{ phone: string; status: 'SENT'|'SKIPPED'|'FAILED'; error?: string }> = [];
+
+    for (const raw of recipients) {
+      const phone = raw.replace(/[^\d]/g, '');
+      try {
+        if (checkNumber) {
+          const check = await this.checkNumber(sessionId, phone);
+          if (!check.exists) {
+            results.push({ phone, status: 'SKIPPED', error: 'Not on WhatsApp' });
+            await this.prisma.whatsAppMessage?.create?.({
+              data: { phone, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'FAILED', errorMessage: 'Not on WhatsApp' }
+            }).catch(() => {});
+            continue;
+          }
+        }
+
+        const jid = this.phoneToJid(phone);
+        const res = await rt.sock!.sendMessage(jid, {
+          image: imgBuf,     // Buffer
+          caption: caption || undefined,
+        });
+
+        // update log
+        results.push({ phone, status: 'SENT' });
+        await this.prisma.whatsAppMessage?.create?.({
+          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'SENT' }
+        }).catch(() => {});
+
+        await sleep(withJitter(delayMs, jitterMs));
+      } catch (e: any) {
+        const msg = e?.message || 'Send failed';
+        results.push({ phone, status: 'FAILED', error: msg });
+        await this.prisma.whatsAppMessage?.create?.({
+          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'FAILED', errorMessage: msg }
+        }).catch(() => {});
+        await sleep(withJitter(Math.max(delayMs, 1500), jitterMs));
+      }
+    }
+
+    return { campaignId, total: recipients.length, summary: countStatuses(results), results };
+  }
+
+  // 1) Send into a group chat (text)
+  public async groupSendText(dto: { sessionId: string; groupJid: string; text: string; }) {
+    const rt = this.sessions.get(dto.sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+
+    const res = await rt.sock.sendMessage(dto.groupJid, { text: dto.text });
+    return { groupJid: dto.groupJid, messageId: res?.key?.id ?? null };
+  }
+
+  // 2) Send into a group chat (image+caption)
+  public async groupSendImage(dto: { sessionId: string; groupJid: string; imageUrl: string; caption?: string; }) {
+    const rt = this.sessions.get(dto.sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+
+    const img = await this.fetchImageBuffer(dto.imageUrl);
+    const res = await rt.sock.sendMessage(dto.groupJid, { image: img, caption: dto.caption || undefined });
+    return { groupJid: dto.groupJid, messageId: res?.key?.id ?? null };
+  }
+
+  // helper to get group metadata & participants
+  private async getGroupParticipants(sessionId: string, groupJid: string) {
+    const rt = this.sessions.get(sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+
+    const meta = await rt.sock.groupMetadata(groupJid); // returns id, subject, participants[]
+    // participants[].id is a JID like '62812...@s.whatsapp.net', .isAdmin/.isSuperAdmin flags exist
+    return meta;
+  }
+
+  // 3) DM every member (text)
+  public async groupDmMembersText(dto: {
+    sessionId: string; groupJid: string; text: string;
+    delayMs?: number; jitterMs?: number; checkNumber?: boolean; includeAdmins?: boolean;
+  }) {
+    const {
+      sessionId, groupJid, text,
+      delayMs = 1500, jitterMs = 600, checkNumber = true, includeAdmins = true
+    } = dto;
+
+    const meta = await this.getGroupParticipants(sessionId, groupJid);
+    const people = meta.participants ?? [];
+    const targets = people.filter(p => includeAdmins ? true : !(p.admin === 'admin' || p.admin === 'superadmin'));
+
+    const results: Array<{ phone: string; status: 'SENT'|'SKIPPED'|'FAILED'; error?: string }> = [];
+
+    for (const p of targets) {
+      const jid = p.id;                                   // '62xxxxx@s.whatsapp.net'
+      const phone = jid.split('@')[0];
+
+      try {
+        if (checkNumber) {
+          const chk = await this.checkNumber(sessionId, phone);
+          if (!chk.exists) {
+            results.push({ phone, status: 'SKIPPED', error: 'Not on WhatsApp' });
+            continue;
+          }
+        }
+        await this.sendText(sessionId, phone, text);
+        results.push({ phone, status: 'SENT' });
+        await this.sleepJitter(delayMs, jitterMs);
+      } catch (e: any) {
+        results.push({ phone, status: 'FAILED', error: e?.message || 'Send failed' });
+        await this.sleepJitter(Math.max(delayMs, 1600), jitterMs);
+      }
+    }
+
+    return { groupJid, groupSubject: meta.subject, total: results.length, summary: this.countStatuses(results), results };
+  }
+
+  // 4) DM every member (image)
+  public async groupDmMembersImage(dto: {
+    sessionId: string; groupJid: string; imageUrl: string; caption?: string;
+    delayMs?: number; jitterMs?: number; checkNumber?: boolean; includeAdmins?: boolean;
+  }) {
+    const {
+      sessionId, groupJid, imageUrl, caption,
+      delayMs = 1800, jitterMs = 700, checkNumber = true, includeAdmins = true
+    } = dto;
+
+    const rt = this.sessions.get(sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+
+    const meta = await this.getGroupParticipants(sessionId, groupJid);
+    const img = await this.fetchImageBuffer(imageUrl);
+
+    const people = meta.participants ?? [];
+    const targets = people.filter(p => includeAdmins ? true : !(p.admin === 'admin' || p.admin === 'superadmin'));
+
+    const results: Array<{ phone: string; status: 'SENT'|'SKIPPED'|'FAILED'; error?: string }> = [];
+
+    for (const p of targets) {
+      const jid = p.id;
+      const phone = jid.split('@')[0];
+
+      try {
+        if (checkNumber) {
+          const chk = await this.checkNumber(sessionId, phone);
+          if (!chk.exists) {
+            results.push({ phone, status: 'SKIPPED', error: 'Not on WhatsApp' });
+            continue;
+          }
+        }
+        await rt.sock.sendMessage(jid, { image: img, caption: caption || undefined });
+        results.push({ phone, status: 'SENT' });
+        await this.sleepJitter(delayMs, jitterMs);
+      } catch (e: any) {
+        results.push({ phone, status: 'FAILED', error: e?.message || 'Send failed' });
+        await this.sleepJitter(Math.max(delayMs, 1800), jitterMs);
+      }
+    }
+
+    return { groupJid, groupSubject: meta.subject, total: results.length, summary: this.countStatuses(results), results };
+  }
+
+  // small helpers you can place near top/bottom:
+  private sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
+  private withJitter(base: number, jitter: number) {
+    if (jitter <= 0) return base;
+    const delta = Math.floor((Math.random() * 2 - 1) * jitter);
+    return Math.max(0, base + delta);
+  }
+  private async sleepJitter(base: number, jitter: number) {
+    await this.sleep(this.withJitter(base, jitter));
+  }
+  private countStatuses(items: {status:string}[]) {
+    return items.reduce((acc, it) => {
+      acc[it.status] = (acc[it.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }
+
+
   private phoneToJid(e164NoPlus: string) {
     const num = e164NoPlus.replace(/[^\d]/g, '');
     return `${num}@s.whatsapp.net`;
+  }
+
+  private async fetchImageBuffer(url: string): Promise<Buffer> {
+    const r = await axios.get<ArrayBuffer>(url, { responseType: 'arraybuffer' });
+    return Buffer.from(r.data as any);
   }
 }
