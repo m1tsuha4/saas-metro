@@ -106,3 +106,52 @@ model WhatsAppMessage {
   campaign WaCampaign? @relation(fields:[campaignId], references:[id])
 }
 
+model GmailAccount {
+  id           String   @id @default(cuid())
+  ownerId      String   // your app user id
+  email        String   @unique
+  accessToken  String
+  refreshToken String
+  tokenType    String
+  expiryDate   BigInt   // ms since epoch
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model EmailContact {
+  id        String   @id @default(cuid())
+  ownerId   String
+  email     String
+  name      String?
+  status    String   @default("ACTIVE") // ACTIVE | BOUNCED | UNSUBSCRIBED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerId, email])
+}
+
+model EmailCampaign {
+  id          String   @id @default(cuid())
+  ownerId     String
+  fromEmail   String
+  subject     String
+  html        String
+  delayMs     Int      @default(1000)
+  jitterMs    Int      @default(400)
+  createdAt   DateTime @default(now())
+  messages    EmailMessage[]
+}
+
+model EmailMessage {
+  id          String   @id @default(cuid())
+  campaignId  String
+  contactId   String?
+  toEmail     String
+  subject     String
+  status      String   // PENDING | SENT | FAILED | SKIPPED
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign EmailCampaign @relation(fields: [campaignId], references: [id])
+}
