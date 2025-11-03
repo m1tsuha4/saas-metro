@@ -169,6 +169,14 @@ export class WaService {
 
 
 
+  /** List all sessions from database */
+  async listSessions() {
+    const sessions = await this.prisma.whatsAppSession.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { sessions };
+  }
+
   /** Return current QR (if any) */
   getQr(sessionId: string) {
     const rt = this.sessions.get(sessionId);
@@ -229,13 +237,34 @@ export class WaService {
   /** Logout & keep auth files (or delete to force re-scan) */
   async logout(sessionId: string) {
     const rt = this.sessions.get(sessionId);
-    if (rt?.sock) await rt.sock.logout();
+    
+    try {
+      if (rt?.sock) {
+        await rt.sock.logout();
+        // Clean up the runtime
+        rt.sock = undefined;
+        rt.ready = false;
+        rt.qr = undefined;
+      }
+    } catch (error: any) {
+      this.logger.warn(`Error during socket logout for session ${sessionId}:`, error.message);
+      // Continue even if logout fails - still update DB
+    }
 
-    await this.prisma.whatsAppSession.updateMany({
-      where: { id: sessionId },
-      data: { connected: false },
-    });
+    try {
+      await this.prisma.whatsAppSession.updateMany({
+        where: { id: sessionId },
+        data: { connected: false },
+      });
+    } catch (error: any) {
+      this.logger.error(`Error updating session ${sessionId} in database:`, error.message);
+      throw new NotFoundException(`Failed to update session status: ${error.message}`);
+    }
 
+    // Remove from runtime map
+    this.sessions.delete(sessionId);
+
+    this.logger.log(`Session ${sessionId} logged out successfully`);
     return { success: true };
   }
 
@@ -382,6 +411,38 @@ export class WaService {
     const meta = await rt.sock.groupMetadata(groupJid); // returns id, subject, participants[]
     // participants[].id is a JID like '62812...@s.whatsapp.net', .isAdmin/.isSuperAdmin flags exist
     return meta;
+  }
+
+  // Get group members (public method for preview)
+  public async getGroupMembers(sessionId: string, groupJid: string) {
+    const meta = await this.getGroupParticipants(sessionId, groupJid);
+    const participants = meta.participants ?? [];
+    const rt = this.sessions.get(sessionId);
+    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    
+    // Note: LID (Lightweight ID) users don't share their phone numbers
+    // We can only identify them by their LID, not by phone number
+    
+    return {
+      groupJid: meta.id,
+      groupSubject: meta.subject,
+      total: participants.length,
+      members: participants.map((p) => {
+        const jid = p.id; // '62xxxxx@s.whatsapp.net' or '226697148420194@lid'
+        const isLid = jid.includes('@lid');
+        const phone = isLid ? null : jid.split('@')[0];
+        const lid = isLid ? jid.split('@')[0] : null;
+        
+        return {
+          phone,
+          lid,
+          jid,
+          isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
+          adminType: p.admin || null,
+          hasPhoneNumber: !isLid,
+        };
+      }),
+    };
   }
 
   // 3) DM every member (text)

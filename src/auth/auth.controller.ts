@@ -29,8 +29,19 @@ export class AuthController {
   ) {}
 
   @Post('register')
-  register(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto) {
-    return this.userService.createUser(dto);
+  async register(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto) {
+    const user = await this.userService.createUser(dto);
+    const accessToken = this.authService.signToken(user.id, user.role as 'ADMIN' | 'USER');
+    
+    return {
+      access_token: accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    };
   }
 
   @Post('login')

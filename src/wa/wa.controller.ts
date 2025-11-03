@@ -17,14 +17,19 @@ import {
 export class WaController {
   constructor(private readonly wa: WaService) {}
 
-  @Post('session/:id/connect')
-  async connect(@Param('id') id: string, @Body('label') label?: string) {
-    return this.wa.connect(id, label);
+  @Get('sessions')
+  async listSessions() {
+    return this.wa.listSessions();
   }
 
   @Get('session/:id/qr')
   async qr(@Param('id') id: string) {
     return this.wa.getQr(id);
+  }
+
+  @Post('session/:id/connect')
+  async connect(@Param('id') id: string, @Body() body?: { label?: string }) {
+    return this.wa.connect(id, body?.label);
   }
 
   @Post('send')
@@ -40,6 +45,11 @@ export class WaController {
   @Get('groups/:sessionId')
   async groups(@Param('sessionId') sessionId: string) {
     return this.wa.fetchGroups(sessionId);
+  }
+
+  @Get('group/:sessionId/:groupJid/members')
+  async groupMembers(@Param('sessionId') sessionId: string, @Param('groupJid') groupJid: string) {
+    return this.wa.getGroupMembers(sessionId, groupJid);
   }
 
   @Post('logout/:sessionId')
