@@ -118,4 +118,19 @@ export class GoogleEmailService {
 
     return google.gmail({ version: 'v1', auth: oAuth2Client });
   }
+
+  /** Get all Gmail accounts for a user */
+  async getAccounts(ownerId: string) {
+    const accounts = await this.prisma.gmailAccount.findMany({
+      where: { ownerId },
+      select: {
+        id: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return accounts;
+  }
 }

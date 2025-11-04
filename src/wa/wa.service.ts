@@ -169,6 +169,14 @@ export class WaService {
 
 
 
+  /** List all sessions from database */
+  async listSessions() {
+    const sessions = await this.prisma.whatsAppSession.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { sessions };
+  }
+
   /** Return current QR (if any) */
   getQr(sessionId: string) {
     const rt = this.sessions.get(sessionId);
@@ -178,8 +186,7 @@ export class WaService {
 
   /** Send text message */
   async sendText(sessionId: string, toPhoneE164: string, text: string) {
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     const jid = this.phoneToJid(toPhoneE164);
     const res = await rt.sock.sendMessage(jid, { text });
@@ -195,8 +202,7 @@ export class WaService {
 
   /** Check if number has WhatsApp account */
   async checkNumber(sessionId: string, toPhoneE164: string) {
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     const jid = this.phoneToJid(toPhoneE164);
     const info = await rt.sock.onWhatsApp(jid);
@@ -209,10 +215,42 @@ export class WaService {
     return { exists, jid: resolvedJid };
   }
 
+  /** Ensure session is connected (reconnect if needed) */
+  private async ensureConnected(sessionId: string): Promise<SessionRuntime & { sock: ReturnType<typeof makeWASocket> }> {
+    let rt = this.sessions.get(sessionId);
+    
+    // If session exists in memory and socket is ready, return it
+    if (rt?.sock && rt.ready) {
+      return rt as SessionRuntime & { sock: ReturnType<typeof makeWASocket> };
+    }
+
+    // Check if session exists in database and is marked as connected
+    const dbSession = await this.prisma.whatsAppSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    // If session exists in DB and marked as connected, try to reconnect
+    if (dbSession?.connected) {
+      this.logger.log(`Reconnecting session ${sessionId} that was lost from memory`);
+      try {
+        await this.connect(sessionId, dbSession.label ?? undefined);
+        // Wait a bit for connection to establish
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        rt = this.sessions.get(sessionId);
+        if (rt?.sock && rt.ready) {
+          return rt as SessionRuntime & { sock: ReturnType<typeof makeWASocket> };
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to reconnect session ${sessionId}:`, error.message);
+      }
+    }
+
+    throw new NotFoundException('Session not connected. Please connect the session first.');
+  }
+
   /** Fetch groups & members (POC; mind ToS) */
   async fetchGroups(sessionId: string) {
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     const participating = await rt.sock.groupFetchAllParticipating();
     const metaMap = participating as unknown as Record<string, GroupMetadata>;
@@ -229,21 +267,41 @@ export class WaService {
   /** Logout & keep auth files (or delete to force re-scan) */
   async logout(sessionId: string) {
     const rt = this.sessions.get(sessionId);
-    if (rt?.sock) await rt.sock.logout();
+    
+    try {
+      if (rt?.sock) {
+        await rt.sock.logout();
+        // Clean up the runtime
+        rt.sock = undefined;
+        rt.ready = false;
+        rt.qr = undefined;
+      }
+    } catch (error: any) {
+      this.logger.warn(`Error during socket logout for session ${sessionId}:`, error.message);
+      // Continue even if logout fails - still update DB
+    }
 
-    await this.prisma.whatsAppSession.updateMany({
-      where: { id: sessionId },
-      data: { connected: false },
-    });
+    try {
+      await this.prisma.whatsAppSession.updateMany({
+        where: { id: sessionId },
+        data: { connected: false },
+      });
+    } catch (error: any) {
+      this.logger.error(`Error updating session ${sessionId} in database:`, error.message);
+      throw new NotFoundException(`Failed to update session status: ${error.message}`);
+    }
 
+    // Remove from runtime map
+    this.sessions.delete(sessionId);
+
+    this.logger.log(`Session ${sessionId} logged out successfully`);
     return { success: true };
   }
 
   async broadcastText(dto: BroadcastTextInput) {
     const { sessionId, recipients, text, delayMs, jitterMs, checkNumber } = dto;
 
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     // optional: create a campaign row
     let campaignId: string | undefined;
@@ -297,8 +355,7 @@ export class WaService {
   async broadcastImage(dto: BroadcastImageInput) {
     const { sessionId, recipients, caption, imageUrl, delayMs, jitterMs, checkNumber } = dto;
 
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     // prefetch the image once (to avoid downloading for every recipient)
     const imgBuf = await this.fetchImageBuffer(imageUrl);
@@ -357,8 +414,7 @@ export class WaService {
 
   // 1) Send into a group chat (text)
   public async groupSendText(dto: { sessionId: string; groupJid: string; text: string; }) {
-    const rt = this.sessions.get(dto.sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(dto.sessionId);
 
     const res = await rt.sock.sendMessage(dto.groupJid, { text: dto.text });
     return { groupJid: dto.groupJid, messageId: res?.key?.id ?? null };
@@ -366,8 +422,7 @@ export class WaService {
 
   // 2) Send into a group chat (image+caption)
   public async groupSendImage(dto: { sessionId: string; groupJid: string; imageUrl: string; caption?: string; }) {
-    const rt = this.sessions.get(dto.sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(dto.sessionId);
 
     const img = await this.fetchImageBuffer(dto.imageUrl);
     const res = await rt.sock.sendMessage(dto.groupJid, { image: img, caption: dto.caption || undefined });
@@ -376,12 +431,42 @@ export class WaService {
 
   // helper to get group metadata & participants
   private async getGroupParticipants(sessionId: string, groupJid: string) {
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     const meta = await rt.sock.groupMetadata(groupJid); // returns id, subject, participants[]
     // participants[].id is a JID like '62812...@s.whatsapp.net', .isAdmin/.isSuperAdmin flags exist
     return meta;
+  }
+
+  // Get group members (public method for preview)
+  public async getGroupMembers(sessionId: string, groupJid: string) {
+    const rt = await this.ensureConnected(sessionId);
+    const meta = await this.getGroupParticipants(sessionId, groupJid);
+    const participants = meta.participants ?? [];
+    
+    // Note: LID (Lightweight ID) users don't share their phone numbers
+    // We can only identify them by their LID, not by phone number
+    
+    return {
+      groupJid: meta.id,
+      groupSubject: meta.subject,
+      total: participants.length,
+      members: participants.map((p) => {
+        const jid = p.id; // '62xxxxx@s.whatsapp.net' or '226697148420194@lid'
+        const isLid = jid.includes('@lid');
+        const phone = isLid ? null : jid.split('@')[0];
+        const lid = isLid ? jid.split('@')[0] : null;
+        
+        return {
+          phone,
+          lid,
+          jid,
+          isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
+          adminType: p.admin || null,
+          hasPhoneNumber: !isLid,
+        };
+      }),
+    };
   }
 
   // 3) DM every member (text)
@@ -434,8 +519,7 @@ export class WaService {
       delayMs = 1800, jitterMs = 700, checkNumber = true, includeAdmins = true
     } = dto;
 
-    const rt = this.sessions.get(sessionId);
-    if (!rt?.sock) throw new NotFoundException('Session not connected');
+    const rt = await this.ensureConnected(sessionId);
 
     const meta = await this.getGroupParticipants(sessionId, groupJid);
     const img = await this.fetchImageBuffer(imageUrl);

@@ -40,8 +40,19 @@ export class EmailController {
     @Res() res: Response
   ) {
     await this.gsvc.handleCallback(q.code, q.state);
-    // redirect to your frontend success page
-    return res.redirect((process.env.FRONTEND_URL ?? '') + '/email/connected');
+    // redirect to your frontend success page with connected query param
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    return res.redirect(`${frontendUrl}/email/connect?connected=true`);
+  }
+
+  /** Get list of connected Gmail accounts */
+  @UseGuards(JwtAuthGuard)
+  @Get('accounts')
+  async getAccounts(@Req() req) {
+    const ownerId = req.user?.sub ?? req.user?.id ?? req.user?.userId;
+    if (!ownerId) throw new BadRequestException('Missing ownerId in JWT');
+    const accounts = await this.gsvc.getAccounts(ownerId);
+    return { accounts };
   }
 
   /** 3) Send a single test email */

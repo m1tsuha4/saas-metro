@@ -8,7 +8,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(private readonly prisma: PrismaService) {
     super({
       clientID: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.Google_CLIENT_SECRET!, // <-- ensure env name matches, or fix to GOOGLE_CLIENT_SECRET
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       callbackURL: process.env.GOOGLE_CALLBACK_URL!,
       scope: ['profile', 'email'],
     });

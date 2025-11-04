@@ -34,8 +34,8 @@ model Account {
   userId            String
   provider          String
   providerAccountId String
-  refresh_token     String?  
-  access_token      String?  
+  refresh_token     String?   @db.Text
+  access_token      String?   @db.Text
   session_state     String?
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -110,8 +110,8 @@ model GmailAccount {
   id           String   @id @default(cuid())
   ownerId      String   // your app user id
   email        String   @unique
-  accessToken  String
-  refreshToken String
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
   tokenType    String
   expiryDate   BigInt   // ms since epoch
   createdAt    DateTime @default(now())
