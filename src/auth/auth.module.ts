@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { UserService } from '../user/user.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
   controllers: [AuthController],
@@ -26,6 +27,7 @@ import { PrismaModule } from '../prisma/prisma.module';
         signOptions: { expiresIn: '1d' },
       }),
     }),
+    EmailModule
   ],
 })
 export class AuthModule {}

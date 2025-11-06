@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -20,6 +21,7 @@ import { UserService } from 'src/user/user.service';
 import { CreateUserDto, CreateUserSchema } from 'src/user/dto/create-user.dto';
 import { UpdateUserDto, UpdateUserSchema } from 'src/user/dto/update-user.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { VerifyEmailSchema, ResendVerifySchema, ResendVerifyDto } from './dto/verify-email.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -30,18 +32,7 @@ export class AuthController {
 
   @Post('register')
   async register(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto) {
-    const user = await this.userService.createUser(dto);
-    const accessToken = this.authService.signToken(user.id, user.role as 'ADMIN' | 'USER');
-    
-    return {
-      access_token: accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-    };
+    return this.authService.register(dto);
   }
 
   @Post('login')
@@ -83,12 +74,28 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(@User() user, @Req() request: Request) {
-    // Extract token from Authorization header
     const authHeader = request.headers.authorization;
     const token = authHeader?.replace('Bearer ', '');
     if (!token) {
       throw new BadRequestException('Token not found in request headers');
     }
     return this.authService.logout(user.id, token);
+  }
+
+  @Get('verify-email')
+  async verifyEmail(@Query(new ZodValidationPipe(VerifyEmailSchema)) q: { token: string }, @Res() res) {
+    try {
+      await this.authService.verifyEmail(q.token);
+      const redirect = (process.env.FRONTEND_URL ?? '') + '/auth/verified';
+      return res.redirect(redirect || '/');
+    } catch (e) {
+      const redirect = (process.env.FRONTEND_URL ?? '') + '/auth/verify-failed';
+      return res.redirect(redirect || '/');
+    }
+  }
+
+  @Post('verify-email/resend')
+  async resendVerify(@Body(new ZodValidationPipe(ResendVerifySchema)) dto: ResendVerifyDto) {
+    return this.authService.resendVerification(dto.email);
   }
 }

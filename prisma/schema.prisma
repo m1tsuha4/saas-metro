@@ -27,6 +27,20 @@ model User {
   role      UserRole         @default(USER)
   accounts  Account[]
   tokens    TokenBlacklist[]
+  emailVerifiedAt DateTime?
+  emailVerifications EmailVerification[]
+}
+
+model EmailVerification {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tokenHash])
 }
 
 model Account {
@@ -59,7 +73,7 @@ model WhatsAppSession {
   id         String   @id @default(cuid())
   label      String?
   ownerId    String?                    
-  statePath  String                     // folder path for auth files
+  statePath  String                   
   meJid      String?                    // e.g., 628xxx@s.whatsapp.net
   connected  Boolean   @default(false)
   createdAt  DateTime  @default(now())
@@ -95,7 +109,7 @@ model WhatsAppMessage {
   phone         String
   sessionId     String
   campaignId    String?
-  direction     String   // OUTGOING
+  direction     String   
   text          String?
   mediaUrl      String?
   status        String   // SENT | FAILED
@@ -108,12 +122,12 @@ model WhatsAppMessage {
 
 model GmailAccount {
   id           String   @id @default(cuid())
-  ownerId      String   // your app user id
+  ownerId      String   
   email        String   @unique
   accessToken  String   @db.Text
   refreshToken String   @db.Text
   tokenType    String
-  expiryDate   BigInt   // ms since epoch
+  expiryDate   BigInt   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
