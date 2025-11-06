@@ -22,7 +22,9 @@ type SessionRuntime = {
 
 type BroadcastTextInput = {
   sessionId: string;
-  recipients: string[];
+  recipients?: string[];
+  contactIds?: string[];
+  useAllContacts?: boolean;
   text: string;
   delayMs: number;
   jitterMs: number;
@@ -31,7 +33,9 @@ type BroadcastTextInput = {
 
 type BroadcastImageInput = {
   sessionId: string;
-  recipients: string[];
+  recipients?: string[];
+  contactIds?: string[];
+  useAllContacts?: boolean;
   caption?: string;
   imageUrl: string;
   delayMs: number;
@@ -333,10 +337,14 @@ export class WaService {
     return { success: true };
   }
 
-  async broadcastText(dto: BroadcastTextInput) {
-    const { sessionId, recipients, text, delayMs, jitterMs, checkNumber } = dto;
+  async broadcastText(ownerId: string, dto: BroadcastTextInput) {
+    const { sessionId, text, delayMs, jitterMs, checkNumber } = dto;
+    const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
+    if (!recipients.length) {
+      throw new BadRequestException('No recipients resolved from request or stored contacts.');
+    }
 
-    const rt = await this.ensureConnected(sessionId);
+    await this.ensureConnected(sessionId);
 
     // optional: create a campaign row
     let campaignId: string | undefined;
@@ -350,8 +358,8 @@ export class WaService {
 
     const results: Array<{ phone: string; status: 'SENT'|'SKIPPED'|'FAILED'; error?: string }> = [];
 
-    for (const raw of recipients) {
-      const phone = raw.replace(/[^\d]/g, '');
+    for (const entry of recipients) {
+      const phone = entry.phone;
       try {
         if (checkNumber) {
           const check = await this.checkNumber(sessionId, phone);
@@ -359,7 +367,7 @@ export class WaService {
             results.push({ phone, status: 'SKIPPED', error: 'Not on WhatsApp' });
             // optional: mark contact inactive in DB
             await this.prisma.whatsAppMessage?.create?.({
-              data: { phone, sessionId, campaignId, direction: 'OUTGOING', text, status: 'FAILED', errorMessage: 'Not on WhatsApp' }
+              data: { phone, contactId: entry.contactId ?? null, sessionId, campaignId, direction: 'OUTGOING', text, status: 'FAILED', errorMessage: 'Not on WhatsApp' }
             }).catch(() => {});
             continue;
           }
@@ -369,7 +377,7 @@ export class WaService {
         results.push({ phone, status: 'SENT' });
 
         await this.prisma.whatsAppMessage?.create?.({
-          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text, status: 'SENT' }
+          data: { phone, contactId: entry.contactId ?? null, sessionId, campaignId, direction: 'OUTGOING', text, status: 'SENT' }
         }).catch(() => {});
 
         await sleep(withJitter(delayMs, jitterMs)); // atur jarak kirim
@@ -377,7 +385,7 @@ export class WaService {
         const msg = e?.message || 'Send failed';
         results.push({ phone, status: 'FAILED', error: msg });
         await this.prisma.whatsAppMessage?.create?.({
-          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text, status: 'FAILED', errorMessage: msg }
+          data: { phone, contactId: entry.contactId ?? null, sessionId, campaignId, direction: 'OUTGOING', text, status: 'FAILED', errorMessage: msg }
         }).catch(() => {});
         // backoff a bit before next number
         await sleep(withJitter(Math.max(delayMs, 1200), jitterMs));
@@ -387,8 +395,12 @@ export class WaService {
     return { campaignId, total: recipients.length, summary: countStatuses(results), results };
   }
 
-  async broadcastImage(dto: BroadcastImageInput) {
-    const { sessionId, recipients, caption, imageUrl, delayMs, jitterMs, checkNumber } = dto;
+  async broadcastImage(ownerId: string, dto: BroadcastImageInput) {
+    const { sessionId, caption, imageUrl, delayMs, jitterMs, checkNumber } = dto;
+    const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
+    if (!recipients.length) {
+      throw new BadRequestException('No recipients resolved from request or stored contacts.');
+    }
 
     const rt = await this.ensureConnected(sessionId);
 
@@ -407,15 +419,15 @@ export class WaService {
 
     const results: Array<{ phone: string; status: 'SENT'|'SKIPPED'|'FAILED'; error?: string }> = [];
 
-    for (const raw of recipients) {
-      const phone = raw.replace(/[^\d]/g, '');
+    for (const entry of recipients) {
+      const phone = entry.phone;
       try {
         if (checkNumber) {
           const check = await this.checkNumber(sessionId, phone);
           if (!check.exists) {
             results.push({ phone, status: 'SKIPPED', error: 'Not on WhatsApp' });
             await this.prisma.whatsAppMessage?.create?.({
-              data: { phone, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'FAILED', errorMessage: 'Not on WhatsApp' }
+              data: { phone, contactId: entry.contactId ?? null, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'FAILED', errorMessage: 'Not on WhatsApp' }
             }).catch(() => {});
             continue;
           }
@@ -430,7 +442,7 @@ export class WaService {
         // update log
         results.push({ phone, status: 'SENT' });
         await this.prisma.whatsAppMessage?.create?.({
-          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'SENT' }
+          data: { phone, contactId: entry.contactId ?? null, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'SENT' }
         }).catch(() => {});
 
         await sleep(withJitter(delayMs, jitterMs));
@@ -438,7 +450,7 @@ export class WaService {
         const msg = e?.message || 'Send failed';
         results.push({ phone, status: 'FAILED', error: msg });
         await this.prisma.whatsAppMessage?.create?.({
-          data: { phone, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'FAILED', errorMessage: msg }
+          data: { phone, contactId: entry.contactId ?? null, sessionId, campaignId, direction: 'OUTGOING', text: caption ?? null, mediaUrl: imageUrl, status: 'FAILED', errorMessage: msg }
         }).catch(() => {});
         await sleep(withJitter(Math.max(delayMs, 1500), jitterMs));
       }
@@ -603,6 +615,54 @@ export class WaService {
       acc[it.status] = (acc[it.status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
+  }
+
+  private async resolveWhatsAppRecipients(
+    ownerId: string,
+    dto: {
+      recipients?: string[];
+      contactIds?: string[];
+      useAllContacts?: boolean;
+    },
+  ): Promise<Array<{ phone: string; contactId?: string }>> {
+    const recipients = new Map<string, { phone: string; contactId?: string }>();
+
+    if (dto.useAllContacts || (dto.contactIds?.length ?? 0) > 0) {
+      const where: any = { ownerId };
+      if (!dto.useAllContacts && dto.contactIds?.length) {
+        where.id = { in: dto.contactIds };
+      }
+
+      const contacts = await this.prisma.whatsAppContact.findMany({
+        where,
+        select: { id: true, phone: true },
+      });
+
+      for (const contact of contacts) {
+        const normalized = this.normalizePhoneInput(contact.phone);
+        if (!normalized) continue;
+        recipients.set(normalized, { phone: normalized, contactId: contact.id });
+      }
+    }
+
+    for (const raw of dto.recipients ?? []) {
+      const normalized = this.normalizePhoneInput(raw);
+      if (!normalized) continue;
+      const existing = recipients.get(normalized);
+      recipients.set(normalized, { phone: normalized, contactId: existing?.contactId });
+    }
+
+    return Array.from(recipients.values());
+  }
+
+  private normalizePhoneInput(input?: string | null): string | null {
+    if (!input) return null;
+    const digits = `${input}`.replace(/\D/g, '');
+    if (digits.length < 6) return null;
+    if (digits.startsWith('0')) {
+      return `62${digits.slice(1)}`;
+    }
+    return digits;
   }
 
 

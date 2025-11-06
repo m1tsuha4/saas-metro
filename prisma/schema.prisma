@@ -29,6 +29,8 @@ model User {
   tokens    TokenBlacklist[]
   emailVerifiedAt DateTime?
   emailVerifications EmailVerification[]
+  emailContacts EmailContact[]
+  whatsAppContacts WhatsAppContact[]
 }
 
 model EmailVerification {
@@ -82,13 +84,17 @@ model WhatsAppSession {
 
 model WhatsAppContact {
   id        String   @id @default(cuid())
-  phone     String   @unique
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  phone     String
   name      String?
   waJid     String?                      // 62xxx@s.whatsapp.net
-  status    String    @default("UNKNOWN") // ACTIVE, INACTIVE, UNKNOWN
+  status    String   @default("UNKNOWN") // ACTIVE, INACTIVE, UNKNOWN
   source    String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@unique([ownerId, phone])
 }
 
 model WaCampaign {
@@ -135,6 +141,7 @@ model GmailAccount {
 model EmailContact {
   id        String   @id @default(cuid())
   ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   email     String
   name      String?
   status    String   @default("ACTIVE") // ACTIVE | BOUNCED | UNSUBSCRIBED

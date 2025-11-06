@@ -11,6 +11,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { WaModule } from './wa/wa.module';
 import { EmailModule } from './email/email.module';
+import { ContactsModule } from './contacts/contacts.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { EmailModule } from './email/email.module';
     AuthModule,
     WaModule,
     EmailModule,
+    ContactsModule,
   ],
   controllers: [AppController],
   providers: [AppService, WinstonLoggerService],

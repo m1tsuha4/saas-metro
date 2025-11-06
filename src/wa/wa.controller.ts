@@ -63,14 +63,20 @@ export class WaController {
   }
 
   @Post('broadcast/text')
-  async broadcastText(@Body(new ZodValidationPipe(BroadcastTextSchema)) dto: BroadcastTextDto) {
-    const result = await this.wa.broadcastText(dto);
+  async broadcastText(
+    @User('id') ownerId: string,
+    @Body(new ZodValidationPipe(BroadcastTextSchema)) dto: BroadcastTextDto,
+  ) {
+    const result = await this.wa.broadcastText(ownerId, dto);
     return { success: true, ...result };
   }
 
   @Post('broadcast/image')
-  async broadcastImage(@Body(new ZodValidationPipe(BroadcastImageSchema)) dto: BroadcastImageDto) {
-    const result = await this.wa.broadcastImage(dto);
+  async broadcastImage(
+    @User('id') ownerId: string,
+    @Body(new ZodValidationPipe(BroadcastImageSchema)) dto: BroadcastImageDto,
+  ) {
+    const result = await this.wa.broadcastImage(ownerId, dto);
     return { success: true, ...result };
   }
 
