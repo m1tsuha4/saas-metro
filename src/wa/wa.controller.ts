@@ -10,6 +10,7 @@ import {
   GroupDmMembersTextDto, GroupDmMembersTextSchema,
   GroupDmMembersImageDto, GroupDmMembersImageSchema
 } from './dto/group.dto';
+import { User } from 'src/common/decorators/user.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('wa')
@@ -18,8 +19,8 @@ export class WaController {
   constructor(private readonly wa: WaService) {}
 
   @Get('sessions')
-  async listSessions() {
-    return this.wa.listSessions();
+  async listSessions(@User('id') ownerId: string) {
+    return this.wa.listSessions(ownerId);
   }
 
   @Get('session/:id/qr')
@@ -28,8 +29,12 @@ export class WaController {
   }
 
   @Post('session/:id/connect')
-  async connect(@Param('id') id: string, @Body() body?: { label?: string }) {
-    return this.wa.connect(id, body?.label);
+  async connect(
+    @Param('id') id: string,
+    @User('id') ownerId: string,
+    @Body() body?: { label?: string },
+  ) {
+    return this.wa.connect(id, ownerId, body?.label);
   }
 
   @Post('send')

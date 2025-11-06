@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as qrcode from 'qrcode';
 import pino from 'pino';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import axios from 'axios';
 
@@ -17,6 +17,7 @@ type SessionRuntime = {
   qr?: string;                             
   sock?: ReturnType<typeof makeWASocket>;
   ready: boolean;
+  ownerId?: string;
 };
 
 type BroadcastTextInput = {
@@ -71,7 +72,7 @@ export class WaService {
   }
 
   /** Create/(re)connect a session; returns QR (if needed) */
-  async connect(sessionId: string, label?: string) {
+  async connect(sessionId: string, ownerId: string, label?: string) {
     // ensure IPv4 first (important on some local networks)
     import('dns').then(dns => dns.setDefaultResultOrder('ipv4first'));
 
@@ -84,6 +85,21 @@ export class WaService {
     // prepare runtime holder
     const runtime: SessionRuntime = { ready: false };
     this.sessions.set(sessionId, runtime);
+
+    const existing = await this.prisma.whatsAppSession.findUnique({
+      where: { id: sessionId },
+      select: { ownerId: true },
+    });
+
+    if (existing?.ownerId && existing.ownerId !== ownerId) {
+      throw new ForbiddenException('Session already owned by another user');
+    }
+
+    const resolvedOwnerId = existing?.ownerId ?? ownerId;
+    if (!resolvedOwnerId) {
+      throw new BadRequestException('Owner ID is required for this session');
+    }
+    runtime.ownerId = resolvedOwnerId;
 
     const sock = makeWASocket({
       version,
@@ -120,8 +136,21 @@ export class WaService {
 
         await this.prisma.whatsAppSession.upsert({
           where: { id: sessionId },
-          update: { label, statePath: authDir, meJid: me ?? undefined, connected: true },
-          create: { id: sessionId, label, statePath: authDir, meJid: me ?? undefined, connected: true },
+          update: {
+            statePath: authDir,
+            meJid: me ?? undefined,
+            connected: true,
+            ownerId: resolvedOwnerId,
+            ...(label !== undefined ? { label } : {}),
+          },
+          create: {
+            id: sessionId,
+            label,
+            statePath: authDir,
+            meJid: me ?? undefined,
+            connected: true,
+            ownerId: resolvedOwnerId,
+          },
         });
 
         this.logger.log(`Session ${sessionId} connected as ${me}`);
@@ -137,7 +166,8 @@ export class WaService {
 
         // auto-reconnect unless logged out explicitly
         if (code !== DisconnectReason.loggedOut) {
-          setTimeout(() => this.connect(sessionId, label).catch(() => void 0), 3_000);
+          const nextOwner = runtime.ownerId ?? resolvedOwnerId;
+          setTimeout(() => this.connect(sessionId, nextOwner, label).catch(() => void 0), 3_000);
         }
       }
     });
@@ -170,8 +200,9 @@ export class WaService {
 
 
   /** List all sessions from database */
-  async listSessions() {
+  async listSessions(ownerId: string) {
     const sessions = await this.prisma.whatsAppSession.findMany({
+      where: { ownerId },
       orderBy: { createdAt: 'desc' },
     });
     return { sessions };
@@ -233,7 +264,11 @@ export class WaService {
     if (dbSession?.connected) {
       this.logger.log(`Reconnecting session ${sessionId} that was lost from memory`);
       try {
-        await this.connect(sessionId, dbSession.label ?? undefined);
+        const ownerForReconnect = dbSession.ownerId ?? rt?.ownerId;
+        if (!ownerForReconnect) {
+          throw new BadRequestException('Owner not found for this session');
+        }
+        await this.connect(sessionId, ownerForReconnect, dbSession.label ?? undefined);
         // Wait a bit for connection to establish
         await new Promise(resolve => setTimeout(resolve, 2000));
         rt = this.sessions.get(sessionId);
