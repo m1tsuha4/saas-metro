@@ -1,9 +1,5 @@
-
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
   provider = "prisma-client-js"
@@ -16,33 +12,36 @@ datasource db {
 }
 
 model User {
-  id        String           @id @default(cuid())
-  email     String           @unique
-  password  String?
-  name      String?
-  telephone String?
-  picture   String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  role      UserRole         @default(USER)
-  accounts  Account[]
-  tokens    TokenBlacklist[]
-  emailVerifiedAt DateTime?
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  password           String?
+  name               String?
+  telephone          String?
+  picture            String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  role               UserRole            @default(USER)
+  accounts           Account[]
+  tokens             TokenBlacklist[]
+  emailVerifiedAt    DateTime?
   emailVerifications EmailVerification[]
-  emailContacts EmailContact[]
-  whatsAppContacts WhatsAppContact[]
+  emailContacts      EmailContact[]
+  whatsAppContacts   WhatsAppContact[]
+
+  @@map("user")
 }
 
 model EmailVerification {
-  id         String   @id @default(cuid())
-  userId     String
-  tokenHash  String   
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, tokenHash])
+  @@map("emailverification")
 }
 
 model Account {
@@ -50,12 +49,13 @@ model Account {
   userId            String
   provider          String
   providerAccountId String
-  refresh_token     String?   @db.Text
-  access_token      String?   @db.Text
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
   session_state     String?
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@map("account")
 }
 
 model TokenBlacklist {
@@ -64,22 +64,27 @@ model TokenBlacklist {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+
+  @@map("tokenblacklist")
 }
 
 enum UserRole {
   USER
   ADMIN
+  // If your enum is stored differently, add @map on values, e.g. USER @map("user")
 }
 
 model WhatsAppSession {
-  id         String   @id @default(cuid())
-  label      String?
-  ownerId    String?                    
-  statePath  String                   
-  meJid      String?                    // e.g., 628xxx@s.whatsapp.net
-  connected  Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  label     String?
+  ownerId   String?
+  statePath String
+  meJid     String?   // e.g., 628xxx@s.whatsapp.net
+  connected Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("whatsappsession")
 }
 
 model WhatsAppContact {
@@ -95,47 +100,54 @@ model WhatsAppContact {
   updatedAt DateTime  @updatedAt
 
   @@unique([ownerId, phone])
+  @@map("whatsappcontact")
 }
 
 model WaCampaign {
-  id          String   @id @default(cuid())
-  sessionId   String
-  type        String   // TEXT | IMAGE
-  text        String?
-  imageUrl    String?
-  delayMs     Int      @default(1000) // jarak kirim
-  jitterMs    Int      @default(500)  // +/- random
-  createdAt   DateTime @default(now())
-  messages    WhatsAppMessage[]
+  id        String   @id @default(cuid())
+  sessionId String
+  type      String   // TEXT | IMAGE
+  text      String?
+  imageUrl  String?
+  delayMs   Int      @default(1000) // jarak kirim
+  jitterMs  Int      @default(500)  // +/- random
+  createdAt DateTime @default(now())
+  messages  WhatsAppMessage[]
+
+  @@map("wacampaign")
 }
 
 model WhatsAppMessage {
-  id            String   @id @default(cuid())
-  contactId     String?
-  phone         String
-  sessionId     String
-  campaignId    String?
-  direction     String   
-  text          String?
-  mediaUrl      String?
-  status        String   // SENT | FAILED
-  errorMessage  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  contactId    String?
+  phone        String
+  sessionId    String
+  campaignId   String?
+  direction    String
+  text         String?
+  mediaUrl     String?
+  status       String   // SENT | FAILED
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   campaign WaCampaign? @relation(fields:[campaignId], references:[id])
+
+  @@map("whatsappmessage")
 }
 
 model GmailAccount {
   id           String   @id @default(cuid())
-  ownerId      String   
+  ownerId      String
   email        String   @unique
   accessToken  String   @db.Text
   refreshToken String   @db.Text
   tokenType    String
-  expiryDate   BigInt   
+  expiryDate   BigInt
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@map("gmailaccount")
 }
 
 model EmailContact {
@@ -149,30 +161,35 @@ model EmailContact {
   updatedAt DateTime @updatedAt
 
   @@unique([ownerId, email])
+  @@map("emailcontact")
 }
 
 model EmailCampaign {
-  id          String   @id @default(cuid())
-  ownerId     String
-  fromEmail   String
-  subject     String
-  html        String
-  delayMs     Int      @default(1000)
-  jitterMs    Int      @default(400)
-  createdAt   DateTime @default(now())
-  messages    EmailMessage[]
+  id        String   @id @default(cuid())
+  ownerId   String
+  fromEmail String
+  subject   String
+  html      String
+  delayMs   Int      @default(1000)
+  jitterMs  Int      @default(400)
+  createdAt DateTime @default(now())
+  messages  EmailMessage[]
+
+  @@map("emailcampaign")
 }
 
 model EmailMessage {
-  id          String   @id @default(cuid())
-  campaignId  String
-  contactId   String?
-  toEmail     String
-  subject     String
-  status      String   // PENDING | SENT | FAILED | SKIPPED
-  error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  campaignId String
+  contactId  String?
+  toEmail    String
+  subject    String
+  status     String   // PENDING | SENT | FAILED | SKIPPED
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   campaign EmailCampaign @relation(fields: [campaignId], references: [id])
+
+  @@map("emailmessage")
 }
