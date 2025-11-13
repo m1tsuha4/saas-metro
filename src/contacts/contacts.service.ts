@@ -1,7 +1,14 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+import {
+  CreateEmailContactDto,
+  CreateWhatsAppContactDto,
+  UpdateEmailContactDto,
+  UpdateWhatsAppContactDto,
+} from './dto';
 
 type ImportSummary = {
   rows: number;
@@ -15,6 +22,24 @@ const emailSchema = z.string().email();
 @Injectable()
 export class ContactsService {
   private readonly logger = new Logger('ContactsService');
+  private readonly emailContactSelect = {
+    id: true,
+    email: true,
+    name: true,
+    status: true,
+    createdAt: true,
+    updatedAt: true,
+  };
+
+  private readonly whatsappContactSelect = {
+    id: true,
+    phone: true,
+    name: true,
+    status: true,
+    source: true,
+    createdAt: true,
+    updatedAt: true,
+  };
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -165,16 +190,169 @@ export class ContactsService {
       this.prisma.emailContact.findMany({
         where: { ownerId },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, email: true, name: true, status: true, createdAt: true, updatedAt: true },
+        select: this.emailContactSelect,
       }),
       this.prisma.whatsAppContact.findMany({
         where: { ownerId },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, phone: true, name: true, status: true, source: true, createdAt: true, updatedAt: true },
+        select: this.whatsappContactSelect,
       }),
     ]);
 
     return { emails, whatsapp };
+  }
+
+  async createEmailContact(ownerId: string, payload: CreateEmailContactDto) {
+    const email = this.normalizeEmail(payload.email);
+    emailSchema.parse(email);
+
+    try {
+      return await this.prisma.emailContact.create({
+        data: {
+          ownerId,
+          email,
+          name: this.normalizeName(payload.name),
+          status: payload.status ?? 'ACTIVE',
+        },
+        select: this.emailContactSelect,
+      });
+    } catch (error) {
+      this.handleUniqueConstraint(error, 'email');
+    }
+  }
+
+  async updateEmailContact(ownerId: string, contactId: string, payload: UpdateEmailContactDto) {
+    await this.ensureEmailContact(ownerId, contactId);
+
+    const data: Prisma.EmailContactUpdateInput = {};
+
+    if (payload.email) {
+      const email = this.normalizeEmail(payload.email);
+      emailSchema.parse(email);
+      data.email = email;
+    }
+    if (payload.name !== undefined) {
+      data.name = this.normalizeName(payload.name);
+    }
+    if (payload.status) {
+      data.status = payload.status;
+    }
+
+    try {
+      return await this.prisma.emailContact.update({
+        where: { id: contactId },
+        data,
+        select: this.emailContactSelect,
+      });
+    } catch (error) {
+      this.handleUniqueConstraint(error, 'email');
+    }
+  }
+
+  async deleteEmailContact(ownerId: string, contactId: string) {
+    await this.ensureEmailContact(ownerId, contactId);
+    await this.prisma.emailContact.delete({ where: { id: contactId } });
+    return { id: contactId };
+  }
+
+  async createWhatsAppContact(ownerId: string, payload: CreateWhatsAppContactDto) {
+    const phone = this.normalizePhone(payload.phone);
+    if (!phone) {
+      throw new BadRequestException('Invalid phone/WhatsApp number');
+    }
+
+    try {
+      return await this.prisma.whatsAppContact.create({
+        data: {
+          ownerId,
+          phone,
+          name: this.normalizeName(payload.name),
+          status: payload.status ?? 'ACTIVE',
+          source: this.normalizeSource(payload.source) ?? 'MANUAL',
+        },
+        select: this.whatsappContactSelect,
+      });
+    } catch (error) {
+      this.handleUniqueConstraint(error, 'phone');
+    }
+  }
+
+  async updateWhatsAppContact(ownerId: string, contactId: string, payload: UpdateWhatsAppContactDto) {
+    await this.ensureWhatsAppContact(ownerId, contactId);
+
+    const data: Prisma.WhatsAppContactUpdateInput = {};
+
+    if (payload.phone) {
+      const phone = this.normalizePhone(payload.phone);
+      if (!phone) {
+        throw new BadRequestException('Invalid phone/WhatsApp number');
+      }
+      data.phone = phone;
+    }
+    if (payload.name !== undefined) {
+      data.name = this.normalizeName(payload.name);
+    }
+    if (payload.status) {
+      data.status = payload.status;
+    }
+    if (payload.source !== undefined) {
+      data.source = this.normalizeSource(payload.source);
+    }
+
+    try {
+      return await this.prisma.whatsAppContact.update({
+        where: { id: contactId },
+        data,
+        select: this.whatsappContactSelect,
+      });
+    } catch (error) {
+      this.handleUniqueConstraint(error, 'phone');
+    }
+  }
+
+  async deleteWhatsAppContact(ownerId: string, contactId: string) {
+    await this.ensureWhatsAppContact(ownerId, contactId);
+    await this.prisma.whatsAppContact.delete({ where: { id: contactId } });
+    return { id: contactId };
+  }
+
+  private async ensureEmailContact(ownerId: string, contactId: string) {
+    const contact = await this.prisma.emailContact.findFirst({
+      where: { id: contactId, ownerId },
+    });
+    if (!contact) {
+      throw new NotFoundException('Email contact not found');
+    }
+  }
+
+  private async ensureWhatsAppContact(ownerId: string, contactId: string) {
+    const contact = await this.prisma.whatsAppContact.findFirst({
+      where: { id: contactId, ownerId },
+    });
+    if (!contact) {
+      throw new NotFoundException('WhatsApp contact not found');
+    }
+  }
+
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+  }
+
+  private normalizeName(name?: string) {
+    const trimmed = name?.trim();
+    return trimmed && trimmed.length ? trimmed : undefined;
+  }
+
+  private normalizeSource(source?: string) {
+    const trimmed = source?.trim();
+    return trimmed && trimmed.length ? trimmed : undefined;
+  }
+
+  private handleUniqueConstraint(error: unknown, field: 'email' | 'phone'): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new ConflictException(`A contact with this ${field} already exists`);
+    }
+    throw error;
   }
 
   private normalizeHeader(header: string): 'email' | 'phone' | 'name' | null {
