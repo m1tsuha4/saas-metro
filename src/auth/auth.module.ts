@@ -27,7 +27,7 @@ import { EmailModule } from 'src/email/email.module';
         signOptions: { expiresIn: '1d' },
       }),
     }),
-    EmailModule
+    EmailModule,
   ],
 })
 export class AuthModule {}

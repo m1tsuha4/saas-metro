@@ -1,4 +1,7 @@
-export const verifyEmailHtml = (name: string | null | undefined, link: string) => `
+export const verifyEmailHtml = (
+  name: string | null | undefined,
+  link: string,
+) => `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
     <h2>Verify your email${name ? `, ${name}` : ''}</h2>
     <p>Click the button below to verify your email address.</p>

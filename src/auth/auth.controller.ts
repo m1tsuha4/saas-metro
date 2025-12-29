@@ -21,7 +21,11 @@ import { UserService } from 'src/user/user.service';
 import { CreateUserDto, CreateUserSchema } from 'src/user/dto/create-user.dto';
 import { UpdateUserDto, UpdateUserSchema } from 'src/user/dto/update-user.dto';
 import { AuthGuard } from '@nestjs/passport';
-import { VerifyEmailSchema, ResendVerifySchema, ResendVerifyDto } from './dto/verify-email.dto';
+import {
+  VerifyEmailSchema,
+  ResendVerifySchema,
+  ResendVerifyDto,
+} from './dto/verify-email.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -31,7 +35,9 @@ export class AuthController {
   ) {}
 
   @Post('register')
-  async register(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto) {
+  async register(
+    @Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto,
+  ) {
     return this.authService.register(dto);
   }
 
@@ -83,7 +89,10 @@ export class AuthController {
   }
 
   @Get('verify-email')
-  async verifyEmail(@Query(new ZodValidationPipe(VerifyEmailSchema)) q: { token: string }, @Res() res) {
+  async verifyEmail(
+    @Query(new ZodValidationPipe(VerifyEmailSchema)) q: { token: string },
+    @Res() res,
+  ) {
     try {
       await this.authService.verifyEmail(q.token);
       const redirect = (process.env.FRONTEND_URL ?? '') + '/auth/verified';
@@ -95,7 +104,9 @@ export class AuthController {
   }
 
   @Post('verify-email/resend')
-  async resendVerify(@Body(new ZodValidationPipe(ResendVerifySchema)) dto: ResendVerifyDto) {
+  async resendVerify(
+    @Body(new ZodValidationPipe(ResendVerifySchema)) dto: ResendVerifyDto,
+  ) {
     return this.authService.resendVerification(dto.email);
   }
 }

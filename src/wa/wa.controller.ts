@@ -3,18 +3,27 @@ import { WaService } from './wa.service';
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 import { SendDto, SendSchema } from './dto/send.dto';
 import { JwtAuthGuard } from 'src/auth/guard/jwt-guard.auth';
-import { BroadcastImageDto, BroadcastImageSchema, BroadcastTextDto, BroadcastTextSchema } from './dto/broadcast.dto';
 import {
-  GroupSendTextDto, GroupSendTextSchema,
-  GroupSendImageDto, GroupSendImageSchema,
-  GroupDmMembersTextDto, GroupDmMembersTextSchema,
-  GroupDmMembersImageDto, GroupDmMembersImageSchema
+  BroadcastImageDto,
+  BroadcastImageSchema,
+  BroadcastTextDto,
+  BroadcastTextSchema,
+} from './dto/broadcast.dto';
+import {
+  GroupSendTextDto,
+  GroupSendTextSchema,
+  GroupSendImageDto,
+  GroupSendImageSchema,
+  GroupDmMembersTextDto,
+  GroupDmMembersTextSchema,
+  GroupDmMembersImageDto,
+  GroupDmMembersImageSchema,
 } from './dto/group.dto';
 import { User } from 'src/common/decorators/user.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('wa')
-// @UseGuards(JwtAuthGuard) 
+// @UseGuards(JwtAuthGuard)
 export class WaController {
   constructor(private readonly wa: WaService) {}
 
@@ -43,7 +52,10 @@ export class WaController {
   }
 
   @Post('check/:sessionId/:phone')
-  async check(@Param('sessionId') sessionId: string, @Param('phone') phone: string) {
+  async check(
+    @Param('sessionId') sessionId: string,
+    @Param('phone') phone: string,
+  ) {
     return this.wa.checkNumber(sessionId, phone);
   }
 
@@ -53,7 +65,10 @@ export class WaController {
   }
 
   @Get('group/:sessionId/:groupJid/members')
-  async groupMembers(@Param('sessionId') sessionId: string, @Param('groupJid') groupJid: string) {
+  async groupMembers(
+    @Param('sessionId') sessionId: string,
+    @Param('groupJid') groupJid: string,
+  ) {
     return this.wa.getGroupMembers(sessionId, groupJid);
   }
 
@@ -81,25 +96,35 @@ export class WaController {
   }
 
   @Post('group/send-text')
-  async groupSendText(@Body(new ZodValidationPipe(GroupSendTextSchema)) dto: GroupSendTextDto) {
+  async groupSendText(
+    @Body(new ZodValidationPipe(GroupSendTextSchema)) dto: GroupSendTextDto,
+  ) {
     const data = await this.wa.groupSendText(dto);
     return { success: true, ...data };
   }
 
   @Post('group/send-image')
-  async groupSendImage(@Body(new ZodValidationPipe(GroupSendImageSchema)) dto: GroupSendImageDto) {
+  async groupSendImage(
+    @Body(new ZodValidationPipe(GroupSendImageSchema)) dto: GroupSendImageDto,
+  ) {
     const data = await this.wa.groupSendImage(dto);
     return { success: true, ...data };
   }
 
   @Post('group/dm-members-text')
-  async groupDmMembersText(@Body(new ZodValidationPipe(GroupDmMembersTextSchema)) dto: GroupDmMembersTextDto) {
+  async groupDmMembersText(
+    @Body(new ZodValidationPipe(GroupDmMembersTextSchema))
+    dto: GroupDmMembersTextDto,
+  ) {
     const data = await this.wa.groupDmMembersText(dto);
     return { success: true, ...data };
   }
 
   @Post('group/dm-members-image')
-  async groupDmMembersImage(@Body(new ZodValidationPipe(GroupDmMembersImageSchema)) dto: GroupDmMembersImageDto) {
+  async groupDmMembersImage(
+    @Body(new ZodValidationPipe(GroupDmMembersImageSchema))
+    dto: GroupDmMembersImageDto,
+  ) {
     const data = await this.wa.groupDmMembersImage(dto);
     return { success: true, ...data };
   }

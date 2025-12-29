@@ -15,7 +15,7 @@ export class GoogleEmailService {
   getAuthUrl(state: string) {
     const scopes = [
       'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.readonly', 
+      'https://www.googleapis.com/auth/gmail.readonly',
     ];
     return this.oauth2.generateAuthUrl({
       access_type: 'offline',
@@ -25,7 +25,7 @@ export class GoogleEmailService {
     });
   }
 
- async handleCallback(code: string, ownerId: string) {
+  async handleCallback(code: string, ownerId: string) {
     // 1) Exchange code for tokens
     const { tokens } = await this.oauth2.getToken(code);
     this.oauth2.setCredentials(tokens);
@@ -35,18 +35,22 @@ export class GoogleEmailService {
     const profile = await gmail.users.getProfile({ userId: 'me' });
     const email = profile.data.emailAddress;
     if (!email) {
-      throw new BadRequestException('Could not determine Gmail address from profile');
+      throw new BadRequestException(
+        'Could not determine Gmail address from profile',
+      );
     }
 
     // 3) Handle missing refresh_token (happens if user had already granted)
     let refreshToken = tokens.refresh_token;
     if (!refreshToken) {
-      const existing = await this.prisma.gmailAccount.findUnique({ where: { email } });
+      const existing = await this.prisma.gmailAccount.findUnique({
+        where: { email },
+      });
       refreshToken = existing?.refreshToken || null;
     }
     if (!refreshToken) {
       throw new BadRequestException(
-        'No refresh_token returned. Reconnect after removing previous grant in Google Account > Security > Third-party access, or keep using the existing stored refresh token.'
+        'No refresh_token returned. Reconnect after removing previous grant in Google Account > Security > Third-party access, or keep using the existing stored refresh token.',
       );
     }
 
@@ -74,12 +78,14 @@ export class GoogleEmailService {
   }
 
   /** Get an authorized Gmail client; auto-persists refreshed tokens */
-   async getAuthorizedClient(fromEmail: string) {
+  async getAuthorizedClient(fromEmail: string) {
     const account = await this.prisma.gmailAccount.findUnique({
       where: { email: fromEmail },
     });
     if (!account)
-      throw new BadRequestException('No Gmail account connected for this address.');
+      throw new BadRequestException(
+        'No Gmail account connected for this address.',
+      );
 
     const oAuth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,

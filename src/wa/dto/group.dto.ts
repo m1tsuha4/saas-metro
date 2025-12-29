@@ -3,7 +3,7 @@ import { createZodDto } from '@anatine/zod-nestjs';
 
 export const GroupSendTextSchema = z.object({
   sessionId: z.string().min(1),
-  groupJid: z.string().min(10),          // e.g. "1203630xxxxxxx@g.us"
+  groupJid: z.string().min(10), // e.g. "1203630xxxxxxx@g.us"
   text: z.string().min(1),
 });
 
@@ -28,7 +28,9 @@ export const GroupDmMembersTextSchema = z.object({
   includeAdmins: z.boolean().default(true),
 });
 
-export class GroupDmMembersTextDto extends createZodDto(GroupDmMembersTextSchema) {}
+export class GroupDmMembersTextDto extends createZodDto(
+  GroupDmMembersTextSchema,
+) {}
 
 export const GroupDmMembersImageSchema = z.object({
   sessionId: z.string().min(1),
@@ -41,4 +43,6 @@ export const GroupDmMembersImageSchema = z.object({
   includeAdmins: z.boolean().default(true),
 });
 
-export class GroupDmMembersImageDto extends createZodDto(GroupDmMembersImageSchema) {}
+export class GroupDmMembersImageDto extends createZodDto(
+  GroupDmMembersImageSchema,
+) {}

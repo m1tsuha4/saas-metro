@@ -13,9 +13,14 @@ import { verifyEmailHtml } from './templates/verify-email';
 import { LoginDto } from './dto/login.dto';
 
 function base64url(buf: Buffer) {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return buf
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
-const sha256 = (input: string) => crypto.createHash('sha256').update(input).digest('hex');
+const sha256 = (input: string) =>
+  crypto.createHash('sha256').update(input).digest('hex');
 
 @Injectable()
 export class AuthService {
@@ -31,8 +36,13 @@ export class AuthService {
   }
 
   // -------------------- SEND VERIFICATION --------------------
-  private async sendVerificationEmail(user: { id: string; email: string; name?: string | null }) {
-    const ttlRaw = process.env.VERIFY_TOKEN_TTL_MIN ?? process.env.VERIFY_TOKEN_TTL_MINUTES;
+  private async sendVerificationEmail(user: {
+    id: string;
+    email: string;
+    name?: string | null;
+  }) {
+    const ttlRaw =
+      process.env.VERIFY_TOKEN_TTL_MIN ?? process.env.VERIFY_TOKEN_TTL_MINUTES;
     const ttlMin = Number(ttlRaw ?? 30);
     const token = base64url(crypto.randomBytes(32));
     const tokenHash = sha256(token);
@@ -78,10 +88,17 @@ export class AuthService {
   }
 
   // -------------------- REGISTER --------------------
-  async register(data: { email: string; password: string; name?: string | null }) {
-    const exists = await this.prisma.user.findUnique({ where: { email: data.email } });
+  async register(data: {
+    email: string;
+    password: string;
+    name?: string | null;
+  }) {
+    const exists = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
     if (exists) {
-      if (exists.emailVerifiedAt) throw new ConflictException('Email already registered');
+      if (exists.emailVerifiedAt)
+        throw new ConflictException('Email already registered');
 
       const hashed = await bcrypt.hash(data.password, 10);
       const updated = await this.prisma.user.update({
@@ -91,12 +108,21 @@ export class AuthService {
 
       await this.sendVerificationEmail(updated);
 
-      const accessToken = this.signToken(updated.id, updated.role as 'ADMIN' | 'USER');
+      const accessToken = this.signToken(
+        updated.id,
+        updated.role as 'ADMIN' | 'USER',
+      );
       return {
         success: true,
-        message: 'Account already exists but is not verified. We resent the verification email.',
+        message:
+          'Account already exists but is not verified. We resent the verification email.',
         access_token: accessToken,
-        user: { id: updated.id, email: updated.email, name: updated.name, role: updated.role },
+        user: {
+          id: updated.id,
+          email: updated.email,
+          name: updated.name,
+          role: updated.role,
+        },
       };
     }
 
@@ -111,9 +137,15 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'Registered successfully. Please check your email to verify your account.',
+      message:
+        'Registered successfully. Please check your email to verify your account.',
       access_token: accessToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     };
   }
 
@@ -132,7 +164,9 @@ export class AuthService {
         where: { id: rec.id },
         data: { usedAt: new Date() },
       });
-      throw new BadRequestException('Token expired. Please request a new verification email.');
+      throw new BadRequestException(
+        'Token expired. Please request a new verification email.',
+      );
     }
 
     await this.prisma.$transaction([
@@ -153,7 +187,8 @@ export class AuthService {
   async resendVerification(email: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) return { success: true };
-    if (user.emailVerifiedAt) return { success: true, message: 'Already verified' };
+    if (user.emailVerifiedAt)
+      return { success: true, message: 'Already verified' };
 
     // cooldown: 1 min
     const recent = await this.prisma.emailVerification.findFirst({
@@ -161,7 +196,9 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
     if (recent && Date.now() - recent.createdAt.getTime() < 60_000)
-      throw new BadRequestException('Please wait a moment before requesting again.');
+      throw new BadRequestException(
+        'Please wait a moment before requesting again.',
+      );
 
     await this.sendVerificationEmail(user);
     return { success: true, message: 'Verification email sent' };
@@ -171,18 +208,26 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.password) throw new ConflictException('Invalid credentials');
+    if (!user || !user.password)
+      throw new ConflictException('Invalid credentials');
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) throw new ConflictException('Invalid credentials');
 
     if (!user.emailVerifiedAt)
-      throw new ForbiddenException('Email not verified. Please verify your email first.');
+      throw new ForbiddenException(
+        'Email not verified. Please verify your email first.',
+      );
 
     const accessToken = this.signToken(user.id, user.role as 'ADMIN' | 'USER');
     return {
       access_token: accessToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     };
   }
 
@@ -195,7 +240,10 @@ export class AuthService {
   }
 
   // -------------------- GOOGLE REDIRECT --------------------
-  async buildGoogleRedirectUrl(payload: { userId: string; role: 'ADMIN' | 'USER' }) {
+  async buildGoogleRedirectUrl(payload: {
+    userId: string;
+    role: 'ADMIN' | 'USER';
+  }) {
     const token = this.signToken(payload.userId, payload.role);
     return `${process.env.FRONTEND_URL}/auth/callback?token=${token}`;
   }

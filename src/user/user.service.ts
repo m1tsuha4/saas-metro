@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -71,7 +75,9 @@ export class UserService {
     if (!existingUser) throw new BadRequestException('User not found');
 
     if (dto.email && dto.email !== existingUser.email) {
-      const emailExists = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      const emailExists = await this.prisma.user.findUnique({
+        where: { email: dto.email },
+      });
       if (emailExists && emailExists.id !== id) {
         throw new ConflictException('Email already in use');
       }
@@ -86,7 +92,11 @@ export class UserService {
       ...(newPictureUrl && { picture: newPictureUrl }),
     };
 
-    if (newPictureUrl && existingUser.picture && existingUser.picture.startsWith('uploads/')) {
+    if (
+      newPictureUrl &&
+      existingUser.picture &&
+      existingUser.picture.startsWith('uploads/')
+    ) {
       const oldPath = join(process.cwd(), existingUser.picture);
       fs.unlink(oldPath).catch(() => void 0);
     }

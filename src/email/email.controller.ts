@@ -1,10 +1,26 @@
-import { Controller, Get, Query, Req, Res, Post, Body, UseGuards, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Req,
+  Res,
+  Post,
+  Body,
+  UseGuards,
+  BadRequestException,
+} from '@nestjs/common';
 import { Response, Request } from 'express';
 import { GoogleEmailService } from './google.service';
 import { EmailService } from './email.service';
 import { JwtAuthGuard } from 'src/auth/guard/jwt-guard.auth';
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
-import { ConnectSchema, SendTestSchema, SendTestDto, EmailBroadcastDto, EmailBroadcastSchema } from './dto/email.dto';
+import {
+  ConnectSchema,
+  SendTestSchema,
+  SendTestDto,
+  EmailBroadcastDto,
+  EmailBroadcastSchema,
+} from './dto/email.dto';
 
 @Controller('email')
 export class EmailController {
@@ -27,7 +43,9 @@ export class EmailController {
   getConnectUrl(@Req() req) {
     const ownerId = req.user?.sub ?? req.user?.id ?? req.user?.userId;
     if (!ownerId) {
-      throw new Error('No user on request; add JwtAuthGuard or pass state manually.');
+      throw new Error(
+        'No user on request; add JwtAuthGuard or pass state manually.',
+      );
     }
     const url = this.gsvc.getAuthUrl(ownerId);
     return { url };
@@ -36,8 +54,9 @@ export class EmailController {
   /** 2) Google OAuth callback */
   @Get('google/callback')
   async callback(
-    @Query(new ZodValidationPipe(ConnectSchema)) q: { code: string; state: string },
-    @Res() res: Response
+    @Query(new ZodValidationPipe(ConnectSchema))
+    q: { code: string; state: string },
+    @Res() res: Response,
   ) {
     await this.gsvc.handleCallback(q.code, q.state);
     // redirect to your frontend success page with connected query param
@@ -58,15 +77,25 @@ export class EmailController {
   /** 3) Send a single test email */
   @UseGuards(JwtAuthGuard)
   @Post('send-test')
-  async sendTest(@Body(new ZodValidationPipe(SendTestSchema)) dto: SendTestDto) {
-    const r = await this.emailSvc.sendTest(dto.fromEmail, dto.toEmail, dto.subject, dto.html);
+  async sendTest(
+    @Body(new ZodValidationPipe(SendTestSchema)) dto: SendTestDto,
+  ) {
+    const r = await this.emailSvc.sendTest(
+      dto.fromEmail,
+      dto.toEmail,
+      dto.subject,
+      dto.html,
+    );
     return r;
   }
 
   /** 4) Broadcast */
   @UseGuards(JwtAuthGuard)
   @Post('broadcast')
-  async broadcast(@Req() req, @Body(new ZodValidationPipe(EmailBroadcastSchema)) dto: EmailBroadcastDto) {
+  async broadcast(
+    @Req() req,
+    @Body(new ZodValidationPipe(EmailBroadcastSchema)) dto: EmailBroadcastDto,
+  ) {
     const ownerId: string = req.user?.sub ?? req.user?.id ?? req.user?.userId;
     if (!ownerId) throw new BadRequestException('Missing ownerId in JWT');
     const r = await this.emailSvc.broadcast(ownerId, dto);

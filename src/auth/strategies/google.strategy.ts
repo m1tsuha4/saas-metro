@@ -14,9 +14,15 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
-  async validate(accessToken: string, refreshToken: string, profile: Profile, done: VerifyCallback) {
+  async validate(
+    accessToken: string,
+    refreshToken: string,
+    profile: Profile,
+    done: VerifyCallback,
+  ) {
     const email = profile.emails?.[0]?.value;
-    if (!email) return done(new Error('Google profile must include email'), null);
+    if (!email)
+      return done(new Error('Google profile must include email'), null);
 
     const name = profile.displayName ?? null;
     const picture = profile.photos?.[0]?.value ?? null;
@@ -25,7 +31,11 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     let user = await this.prisma.user.findFirst({
       where: {
         OR: [
-          { accounts: { some: { provider: 'google', providerAccountId: profile.id } } },
+          {
+            accounts: {
+              some: { provider: 'google', providerAccountId: profile.id },
+            },
+          },
           { email },
         ],
       },
@@ -43,7 +53,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
             create: {
               provider: 'google',
               providerAccountId: profile.id,
-              access_token: accessToken,   // snake_case if that's your schema
+              access_token: accessToken, // snake_case if that's your schema
               refresh_token: refreshToken, // snake_case
             },
           },
@@ -52,7 +62,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       });
     } else {
       const linked = user.accounts.some(
-        a => a.provider === 'google' && a.providerAccountId === profile.id,
+        (a) => a.provider === 'google' && a.providerAccountId === profile.id,
       );
       if (!linked) {
         await this.prisma.account.create({
@@ -82,6 +92,9 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     }
 
     // at this point user is non-null
-    return done(null, { userId: user!.id, role: user!.role as 'ADMIN' | 'USER' });
+    return done(null, {
+      userId: user!.id,
+      role: user!.role as 'ADMIN' | 'USER',
+    });
   }
 }

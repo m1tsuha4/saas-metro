@@ -1,9 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import {
+  DocumentBuilder,
+  SwaggerCustomOptions,
+  SwaggerModule,
+} from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptors';
-import { ValidationPipe } from '@nestjs/common';
 import * as dns from 'dns';
 
 async function bootstrap() {
@@ -16,14 +19,25 @@ async function bootstrap() {
     allowedHeaders: 'Content-Type, Accept, Authorization',
   });
 
-  // const config = new DocumentBuilder()
-  //   .setTitle('Gameblink')
-  //   .setDescription('API documentation for berita')
-  //   .setVersion('1.0')
-  //   .build();
+  const config = new DocumentBuilder()
+    .setTitle('Altama API')
+    .setDescription('Altama API documentation')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
 
-  // const document = SwaggerModule.createDocument(app, config);
-  // SwaggerModule.setup('api', app, document);
+  const swaggerCustomOptions: SwaggerCustomOptions = {
+    customSiteTitle: 'Altama API Docs',
+    customJs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.3.2/swagger-ui-bundle.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.3.2/swagger-ui-standalone-preset.js',
+    ],
+    customCssUrl:
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.3.2/swagger-ui.css',
+  };
+
+  SwaggerModule.setup('api', app, document, swaggerCustomOptions);
 
   // Apply the global response interceptor
   app.useGlobalInterceptors(new TransformInterceptor());

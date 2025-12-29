@@ -57,7 +57,13 @@ export class UserController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('picture', { storage, fileFilter: imageFileFilter, limits: { fileSize: 2 * 1024 * 1024 } })) 
+  @UseInterceptors(
+    FileInterceptor('picture', {
+      storage,
+      fileFilter: imageFileFilter,
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
   update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateUserSchema)) updateUserDto: UpdateUserDto,
@@ -75,7 +81,7 @@ export class UserController {
 
   // @UseGuards(JwtAuthGuard)
   // @Patch('me')
-  // @UseInterceptors(FileInterceptor('picture', { storage, fileFilter: imageFileFilter, limits: { fileSize: 2 * 1024 * 1024 } })) 
+  // @UseInterceptors(FileInterceptor('picture', { storage, fileFilter: imageFileFilter, limits: { fileSize: 2 * 1024 * 1024 } }))
   // async updateUser(
   //   @User() user,
   //   @Body(new ZodValidationPipe(UpdateUserSchema)) dto: UpdateUserDto,

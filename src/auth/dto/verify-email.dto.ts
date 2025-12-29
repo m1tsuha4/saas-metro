@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const VerifyEmailSchema = z.object({
-  token: z.string().min(40), 
+  token: z.string().min(40),
 });
 export type VerifyEmailDto = z.infer<typeof VerifyEmailSchema>;
 

@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
 import { z } from 'zod';
@@ -51,15 +57,22 @@ export class ContactsService {
       await workbook.xlsx.load(file.buffer);
     } catch (err) {
       this.logger.warn(`Failed to parse Excel: ${(err as Error).message}`);
-      throw new BadRequestException('Unable to read Excel file. Ensure it is a valid .xlsx document.');
+      throw new BadRequestException(
+        'Unable to read Excel file. Ensure it is a valid .xlsx document.',
+      );
     }
 
     const worksheet = workbook.worksheets[0];
-    if (!worksheet) throw new BadRequestException('Excel file does not contain any worksheet.');
+    if (!worksheet)
+      throw new BadRequestException(
+        'Excel file does not contain any worksheet.',
+      );
 
     const headerRow = worksheet.getRow(1);
     if (!headerRow || headerRow.actualCellCount === 0) {
-      throw new BadRequestException('Missing header row (first row) in Excel file.');
+      throw new BadRequestException(
+        'Missing header row (first row) in Excel file.',
+      );
     }
 
     const columnMap = new Map<number, 'email' | 'phone' | 'name'>();
@@ -70,7 +83,9 @@ export class ContactsService {
     });
 
     if (!columnMap.size) {
-      throw new BadRequestException('No recognized headers found. Allowed headers: email, name, phone/no_hp/wa.');
+      throw new BadRequestException(
+        'No recognized headers found. Allowed headers: email, name, phone/no_hp/wa.',
+      );
     }
 
     const summary: ImportSummary = {
@@ -97,7 +112,10 @@ export class ContactsService {
       });
 
       if (!collected.email && !collected.phone) {
-        summary.errors.push({ row: rowNumber, reason: 'Row missing both email and phone values' });
+        summary.errors.push({
+          row: rowNumber,
+          reason: 'Row missing both email and phone values',
+        });
         summary.emails.skipped++;
         summary.phones.skipped++;
         continue;
@@ -106,7 +124,9 @@ export class ContactsService {
       const processErrors: string[] = [];
 
       if (collected.email) {
-        const emailResult = emailSchema.safeParse(collected.email.trim().toLowerCase());
+        const emailResult = emailSchema.safeParse(
+          collected.email.trim().toLowerCase(),
+        );
         if (!emailResult.success) {
           summary.emails.skipped++;
           processErrors.push('Invalid email format');
@@ -121,7 +141,10 @@ export class ContactsService {
               where: { ownerId_email: { ownerId, email } },
               data: {
                 ...(name ? { name } : {}),
-                status: existing.status === 'BOUNCED' ? existing.status : existing.status ?? 'ACTIVE',
+                status:
+                  existing.status === 'BOUNCED'
+                    ? existing.status
+                    : (existing.status ?? 'ACTIVE'),
               },
             });
             summary.emails.updated++;
@@ -174,7 +197,10 @@ export class ContactsService {
       }
 
       if (processErrors.length) {
-        summary.errors.push({ row: rowNumber, reason: processErrors.join('; ') });
+        summary.errors.push({
+          row: rowNumber,
+          reason: processErrors.join('; '),
+        });
       }
     }
 
@@ -221,7 +247,11 @@ export class ContactsService {
     }
   }
 
-  async updateEmailContact(ownerId: string, contactId: string, payload: UpdateEmailContactDto) {
+  async updateEmailContact(
+    ownerId: string,
+    contactId: string,
+    payload: UpdateEmailContactDto,
+  ) {
     await this.ensureEmailContact(ownerId, contactId);
 
     const data: Prisma.EmailContactUpdateInput = {};
@@ -255,7 +285,10 @@ export class ContactsService {
     return { id: contactId };
   }
 
-  async createWhatsAppContact(ownerId: string, payload: CreateWhatsAppContactDto) {
+  async createWhatsAppContact(
+    ownerId: string,
+    payload: CreateWhatsAppContactDto,
+  ) {
     const phone = this.normalizePhone(payload.phone);
     if (!phone) {
       throw new BadRequestException('Invalid phone/WhatsApp number');
@@ -277,7 +310,11 @@ export class ContactsService {
     }
   }
 
-  async updateWhatsAppContact(ownerId: string, contactId: string, payload: UpdateWhatsAppContactDto) {
+  async updateWhatsAppContact(
+    ownerId: string,
+    contactId: string,
+    payload: UpdateWhatsAppContactDto,
+  ) {
     await this.ensureWhatsAppContact(ownerId, contactId);
 
     const data: Prisma.WhatsAppContactUpdateInput = {};
@@ -348,9 +385,17 @@ export class ContactsService {
     return trimmed && trimmed.length ? trimmed : undefined;
   }
 
-  private handleUniqueConstraint(error: unknown, field: 'email' | 'phone'): never {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      throw new ConflictException(`A contact with this ${field} already exists`);
+  private handleUniqueConstraint(
+    error: unknown,
+    field: 'email' | 'phone',
+  ): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException(
+        `A contact with this ${field} already exists`,
+      );
     }
     throw error;
   }
@@ -358,7 +403,20 @@ export class ContactsService {
   private normalizeHeader(header: string): 'email' | 'phone' | 'name' | null {
     if (!header) return null;
     const emailHeaders = ['email', 'e-mail', 'mail', 'alamat email'];
-    const phoneHeaders = ['phone', 'no_hp', 'no. hp', 'no hp', 'nohp', 'hp', 'no handphone', 'no. handphone', 'whatsapp', 'wa', 'no wa', 'whatsapp number'];
+    const phoneHeaders = [
+      'phone',
+      'no_hp',
+      'no. hp',
+      'no hp',
+      'nohp',
+      'hp',
+      'no handphone',
+      'no. handphone',
+      'whatsapp',
+      'wa',
+      'no wa',
+      'whatsapp number',
+    ];
     const nameHeaders = ['name', 'nama', 'full name'];
 
     if (emailHeaders.includes(header)) return 'email';
