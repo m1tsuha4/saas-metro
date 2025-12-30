@@ -116,7 +116,6 @@ export class AuthService {
         success: true,
         message:
           'Account already exists but is not verified. We resent the verification email.',
-        access_token: accessToken,
         user: {
           id: updated.id,
           email: updated.email,
