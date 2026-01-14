@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `package` ADD COLUMN `features` TEXT NULL,
+    ADD COLUMN `isPopular` BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN `order` INTEGER NOT NULL DEFAULT 0;
