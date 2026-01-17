@@ -13,6 +13,7 @@ import { WaModule } from './wa/wa.module';
 import { EmailModule } from './email/email.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AdminModule } from './admin/admin.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { AdminModule } from './admin/admin.module';
     EmailModule,
     ContactsModule,
     AdminModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService, WinstonLoggerService],
