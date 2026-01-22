@@ -71,7 +71,6 @@ model TokenBlacklist {
 enum UserRole {
   USER
   ADMIN
-  // If your enum is stored differently, add @map on values, e.g. USER @map("user")
 }
 
 model WhatsAppSession {

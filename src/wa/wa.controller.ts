@@ -23,7 +23,6 @@ import { User } from 'src/common/decorators/user.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('wa')
-// @UseGuards(JwtAuthGuard)
 export class WaController {
   constructor(private readonly wa: WaService) {}
 

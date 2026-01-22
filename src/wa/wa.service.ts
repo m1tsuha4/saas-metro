@@ -18,12 +18,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import axios from 'axios';
+import { run } from 'googleapis/build/src/apis/run';
 
 type SessionRuntime = {
   qr?: string;
   sock?: ReturnType<typeof makeWASocket>;
   ready: boolean;
   ownerId?: string;
+  connecting: boolean;
 };
 
 type BroadcastTextInput = {
@@ -79,39 +81,37 @@ export class WaService {
   /** absolute dir where Baileys stores auth for this session */
   private sessionPath(sessionId: string): string {
     const base = process.env.WA_AUTH_DIR || path.join(process.cwd(), 'wa-auth');
-    return path.join(base, sessionId); // <-- MUST return
+    return path.join(base, sessionId);
   }
 
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
-    // ensure IPv4 first (important on some local networks)
-    import('dns').then((dns) => dns.setDefaultResultOrder('ipv4first'));
+    // Singleton guard
+    const existing = this.sessions.get(sessionId);
+    if (existing?.connecting ||existing?.sock) {
+      return {
+        sessionId,
+        connected: existing.ready,
+        qr: existing.qr ?? null,
+      };
+    }
 
+    // Prepare runtime
+    const runtime: SessionRuntime = {
+      ready: false,
+      ownerId,
+      connecting: true,
+    };
+    this.sessions.set(sessionId, runtime);
+
+    // Prepare auth
     const authDir = this.sessionPath(sessionId);
     fs.mkdirSync(authDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const { version } = await fetchLatestBaileysVersion();
 
-    // prepare runtime holder
-    const runtime: SessionRuntime = { ready: false };
-    this.sessions.set(sessionId, runtime);
-
-    const existing = await this.prisma.whatsAppSession.findUnique({
-      where: { id: sessionId },
-      select: { ownerId: true },
-    });
-
-    if (existing?.ownerId && existing.ownerId !== ownerId) {
-      throw new ForbiddenException('Session already owned by another user');
-    }
-
-    const resolvedOwnerId = existing?.ownerId ?? ownerId;
-    if (!resolvedOwnerId) {
-      throw new BadRequestException('Owner ID is required for this session');
-    }
-    runtime.ownerId = resolvedOwnerId;
-
+    // Create socket
     const sock = makeWASocket({
       version,
       auth: {
@@ -122,22 +122,25 @@ export class WaService {
         ),
       },
       logger: pino({ level: 'info' }),
-      browser: ['Safari', 'Mac OS', '14.0.3'],
+      browser: [
+        'SaaS-Metro',
+        process.env.NODE_ENV ?? 'local',
+        sessionId.slice(0, 6),
+      ],
       markOnlineOnConnect: false,
       syncFullHistory: false,
     });
 
     runtime.sock = sock;
 
-    // persist new creds
+    // Persist credentials
     sock.ev.on('creds.update', saveCreds);
 
-    // connection update handler
+    // Handle connection lifecycle
     sock.ev.on('connection.update', async (u) => {
       const { connection, qr, lastDisconnect } = u;
 
       if (qr) {
-        // convert to base64 QR for API use
         runtime.qr = await qrcode.toDataURL(qr);
         runtime.ready = false;
         this.logger.log(`QR generated for ${sessionId}`);
@@ -146,26 +149,35 @@ export class WaService {
       if (connection === 'open') {
         runtime.ready = true;
         runtime.qr = undefined;
+
         const me = sock.user?.id ?? null;
 
-        await this.prisma.whatsAppSession.upsert({
+        // create once, update later
+        const exists = await this.prisma.whatsAppSession.findUnique({
           where: { id: sessionId },
-          update: {
-            statePath: authDir,
-            meJid: me ?? undefined,
-            connected: true,
-            ownerId: resolvedOwnerId,
-            ...(label !== undefined ? { label } : {}),
-          },
-          create: {
-            id: sessionId,
-            label,
-            statePath: authDir,
-            meJid: me ?? undefined,
-            connected: true,
-            ownerId: resolvedOwnerId,
-          },
+          select: { id: true },
         });
+
+        if (!exists) {
+          await this.prisma.whatsAppSession.create({
+            data: {
+              id: sessionId,
+              label,
+              ownerId,
+              statePath: authDir,
+              meJid: me,
+              connected: true,
+            },
+          });
+        } else {
+          await this.prisma.whatsAppSession.update({
+            where: { id: sessionId },
+            data: {
+              connected: true,
+              meJid: me,
+            },
+          });
+        }
 
         this.logger.log(`Session ${sessionId} connected as ${me}`);
       }
@@ -173,40 +185,54 @@ export class WaService {
       if (connection === 'close') {
         const code = (lastDisconnect as any)?.error?.output?.statusCode;
         this.logger.warn(`Session ${sessionId} closed (${code})`);
+
+        runtime.ready = false;
+        runtime.qr = undefined;
+
         await this.prisma.whatsAppSession.updateMany({
           where: { id: sessionId },
           data: { connected: false },
         });
 
-        // auto-reconnect unless logged out explicitly
-        if (code !== DisconnectReason.loggedOut) {
-          const nextOwner = runtime.ownerId ?? resolvedOwnerId;
-          setTimeout(
-            () => this.connect(sessionId, nextOwner, label).catch(() => void 0),
-            3_000,
+        // Destroy socket BEFORE reconnect
+        try {
+          sock.end(new Error('Socket restart'));
+        } catch (error: any) {
+          this.logger.warn(
+            `Error ending socket for session ${sessionId}: ${error.message}`,
           );
+        }
+
+        this.sessions.delete(sessionId);
+
+        // reconnect only if not logged out
+        if (code !== DisconnectReason.loggedOut) {
+          setTimeout(() => {
+            this.connect(sessionId, ownerId, label).catch(() => {});
+          }, 3000);
         }
       }
     });
 
-    // wait up to 20 s for QR or open event
+    // Wait for QR or open (optional API response)
     const result = await new Promise<{
       connected: boolean;
       qr?: string | null;
     }>((resolve) => {
-      let returned = false;
-      const timer = setTimeout(() => {
-        if (!returned) {
-          returned = true;
+      let done = false;
+
+      const timeout = setTimeout(() => {
+        if (!done) {
+          done = true;
           resolve({ connected: runtime.ready, qr: runtime.qr ?? null });
         }
       }, 20000);
 
       sock.ev.on('connection.update', (u) => {
-        if (returned) return;
+        if (done) return;
         if (u.qr || u.connection === 'open') {
-          clearTimeout(timer);
-          returned = true;
+          clearTimeout(timeout);
+          done = true;
           resolve({ connected: runtime.ready, qr: runtime.qr ?? null });
         }
       });
