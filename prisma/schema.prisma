@@ -27,6 +27,8 @@ model User {
   emailVerifications EmailVerification[]
   emailContacts      EmailContact[]
   whatsAppContacts   WhatsAppContact[]
+  subscriptions      Subscription[]
+  payments           Payment[]
 
   @@map("user")
 }
@@ -191,4 +193,80 @@ model EmailMessage {
   campaign EmailCampaign @relation(fields: [campaignId], references: [id])
 
   @@map("emailmessage")
+}
+
+model ClientLogo {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("clientlogo")
+}
+
+model Package {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.Text
+  price       Int
+  currency    String   @default("IDR")
+  duration    Int      @default(30)
+
+  // Limits
+  maxContacts       Int @default(100)
+  maxWaBroadcast    Int @default(500)
+  maxEmailBroadcast Int @default(1000)
+  maxWaSessions     Int @default(1)
+  maxGmailAccounts  Int @default(1)
+
+  // Display
+  features   String?  @db.Text
+  isPopular  Boolean  @default(false)
+  urutan_ke  Int      @default(0)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("package")
+}
+
+model Subscription {
+  id         String   @id @default(cuid())
+  userId     String
+  packageId  String
+  status     String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  startDate  DateTime @default(now())
+  endDate    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package Package @relation(fields: [packageId], references: [id])
+
+  @@map("subscription")
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String
+  packageId     String?
+  orderId       String   @unique
+  amount        Int
+  currency      String   @default("IDR")
+  status        String   @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
+  paymentType   String?
+  transactionId String?
+  snapToken     String?
+  snapUrl       String?
+  paidAt        DateTime?
+  metadata      String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payment")
 }
