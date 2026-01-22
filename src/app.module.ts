@@ -12,6 +12,8 @@ import { join } from 'path';
 import { WaModule } from './wa/wa.module';
 import { EmailModule } from './email/email.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { AdminModule } from './admin/admin.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -21,7 +23,7 @@ import { ContactsModule } from './contacts/contacts.module';
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/uploads',
     }),
     UserModule,
@@ -29,6 +31,8 @@ import { ContactsModule } from './contacts/contacts.module';
     WaModule,
     EmailModule,
     ContactsModule,
+    AdminModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService, WinstonLoggerService],
