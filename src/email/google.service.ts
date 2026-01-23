@@ -101,7 +101,7 @@ export class GoogleEmailService {
       expiry_date: Number(account.expiryDate),
     });
 
-    // 💡 Force refresh if expired or invalid
+    // Force refresh if expired or invalid
     try {
       const tokenInfo = await oAuth2Client.getTokenInfo(account.accessToken);
       const now = Date.now();
@@ -109,7 +109,7 @@ export class GoogleEmailService {
       if (exp < now - 60000) throw new Error('Token expired');
       // token still valid
     } catch {
-      console.log('🔄 Refreshing Gmail access token...');
+      console.log('Refreshing Gmail access token...');
       const { credentials } = await oAuth2Client.refreshAccessToken();
       oAuth2Client.setCredentials(credentials);
 

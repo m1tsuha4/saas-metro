@@ -21,12 +21,14 @@ import {
   EmailBroadcastDto,
   EmailBroadcastSchema,
 } from './dto/email.dto';
+import { GmailReadService } from './gmail-read.service';
 
 @Controller('email')
 export class EmailController {
   constructor(
     private gsvc: GoogleEmailService,
     private emailSvc: EmailService,
+    private GmailReadService: GmailReadService,
   ) {}
 
   /** 1) Start Google connect – redirects to Google */
@@ -100,5 +102,11 @@ export class EmailController {
     if (!ownerId) throw new BadRequestException('Missing ownerId in JWT');
     const r = await this.emailSvc.broadcast(ownerId, dto);
     return { success: true, ...r };
+  }
+
+  @Post('sync')
+  async sync(@Body('email') email: string) {
+    await this.GmailReadService.syncLatestMessages(email);
+    return { success: true };
   }
 }

@@ -108,10 +108,6 @@ export class AuthService {
 
       await this.sendVerificationEmail(updated);
 
-      const accessToken = this.signToken(
-        updated.id,
-        updated.role as 'ADMIN' | 'USER',
-      );
       return {
         success: true,
         message:
@@ -132,13 +128,11 @@ export class AuthService {
 
     await this.sendVerificationEmail(user);
 
-    const accessToken = this.signToken(user.id, user.role as 'ADMIN' | 'USER');
 
     return {
       success: true,
       message:
         'Registered successfully. Please check your email to verify your account.',
-      access_token: accessToken,
       user: {
         id: user.id,
         email: user.email,
