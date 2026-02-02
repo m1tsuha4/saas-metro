@@ -191,12 +191,41 @@ export class EmailService {
     return Array.from(recipientsMap.values());
   }
 
-  async getInbox(ownerId: string, limit = 20) {
+  async getInbox(
+    ownerId: string,
+    params: {
+      limit?: number;
+      cursor?: Date;
+      label?: string;
+      accountId?: string;
+    },
+  ) {
+    const { limit = 20, cursor, label, accountId } = params;
+
     return this.prisma.gmailMessage.findMany({
       where: {
-        gmailAccount: { ownerId },
+        gmailAccount: {
+          ownerId,
+          ...(accountId ? { id: accountId } : {}),
+        },
+        ...(label
+          ? {
+              labels: {
+                has: label,
+              },
+            }
+          : {}),
+        ...(cursor
+          ? {
+              internalDate: {
+                lt: cursor,
+              },
+            }
+          : {}),
       },
-      orderBy: { internalDate: 'desc' },
+      orderBy: {
+        internalDate: 'desc',
+      },
       take: limit,
       select: {
         id: true,
@@ -205,6 +234,7 @@ export class EmailService {
         snippet: true,
         internalDate: true,
         labels: true,
+        gmailAccountId: true,
       },
     });
   }

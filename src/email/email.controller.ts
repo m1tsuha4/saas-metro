@@ -112,8 +112,20 @@ export class EmailController {
 
   @UseGuards(JwtAuthGuard)
   @Get('inbox')
-  async inbox(@Req() req, @Query('limit') limit = 20) {
+  async inbox(
+    @Req() req,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @Query('label') label?: string,
+    @Query('accountId') accountId?: string,
+  ) {
     const ownerId = req.user.sub;
-    return this.emailSvc.getInbox(ownerId, Number(limit));
+
+    return this.emailSvc.getInbox(ownerId, {
+      limit: limit ? Number(limit) : 20,
+      cursor: cursor ? new Date(cursor) : undefined,
+      label,
+      accountId,
+    });
   }
 }
