@@ -109,4 +109,11 @@ export class EmailController {
     await this.GmailReadService.syncLatestMessages(email);
     return { success: true };
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('inbox')
+  async inbox(@Req() req, @Query('limit') limit = 20) {
+    const ownerId = req.user.sub;
+    return this.emailSvc.getInbox(ownerId, Number(limit));
+  }
 }

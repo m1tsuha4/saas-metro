@@ -190,4 +190,22 @@ export class EmailService {
 
     return Array.from(recipientsMap.values());
   }
+
+  async getInbox(ownerId: string, limit = 20) {
+    return this.prisma.gmailMessage.findMany({
+      where: {
+        gmailAccount: { ownerId },
+      },
+      orderBy: { internalDate: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        from: true,
+        subject: true,
+        snippet: true,
+        internalDate: true,
+        labels: true,
+      },
+    });
+  }
 }
