@@ -2,12 +2,12 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-1.0.x"]
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -34,27 +34,27 @@ model User {
 }
 
 model EmailVerification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   tokenHash String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, tokenHash])
   @@map("emailverification")
 }
 
 model Account {
-  id                String   @id @default(cuid())
+  id                String  @id @default(cuid())
   userId            String
   provider          String
   providerAccountId String
-  refresh_token     String?  @db.Text
-  access_token      String?  @db.Text
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
   session_state     String?
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("account")
@@ -80,10 +80,10 @@ model WhatsAppSession {
   label     String?
   ownerId   String?
   statePath String
-  meJid     String?   // e.g., 628xxx@s.whatsapp.net
-  connected Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  meJid     String? // e.g., 628xxx@s.whatsapp.net
+  connected Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("whatsappsession")
 }
@@ -94,25 +94,25 @@ model WhatsAppContact {
   owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   phone     String
   name      String?
-  waJid     String?                      // 62xxx@s.whatsapp.net
+  waJid     String? // 62xxx@s.whatsapp.net
   status    String   @default("UNKNOWN") // ACTIVE, INACTIVE, UNKNOWN
   source    String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([ownerId, phone])
   @@map("whatsappcontact")
 }
 
 model WaCampaign {
-  id        String   @id @default(cuid())
+  id        String            @id @default(cuid())
   sessionId String
-  type      String   // TEXT | IMAGE
+  type      String // TEXT | IMAGE
   text      String?
   imageUrl  String?
-  delayMs   Int      @default(1000) // jarak kirim
-  jitterMs  Int      @default(500)  // +/- random
-  createdAt DateTime @default(now())
+  delayMs   Int               @default(1000) // jarak kirim
+  jitterMs  Int               @default(500) // +/- random
+  createdAt DateTime          @default(now())
   messages  WhatsAppMessage[]
 
   @@map("wacampaign")
@@ -127,12 +127,12 @@ model WhatsAppMessage {
   direction    String
   text         String?
   mediaUrl     String?
-  status       String   // SENT | FAILED
+  status       String // SENT | FAILED
   errorMessage String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  campaign WaCampaign? @relation(fields:[campaignId], references:[id])
+  campaign WaCampaign? @relation(fields: [campaignId], references: [id])
 
   @@map("whatsappmessage")
 }
@@ -147,6 +147,8 @@ model GmailAccount {
   expiryDate   BigInt
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  messages GmailMessage[]
 
   @@map("gmailaccount")
 }
@@ -166,14 +168,14 @@ model EmailContact {
 }
 
 model EmailCampaign {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   ownerId   String
   fromEmail String
   subject   String
   html      String
-  delayMs   Int      @default(1000)
-  jitterMs  Int      @default(400)
-  createdAt DateTime @default(now())
+  delayMs   Int            @default(1000)
+  jitterMs  Int            @default(400)
+  createdAt DateTime       @default(now())
   messages  EmailMessage[]
 
   @@map("emailcampaign")
@@ -185,7 +187,7 @@ model EmailMessage {
   contactId  String?
   toEmail    String
   subject    String
-  status     String   // PENDING | SENT | FAILED | SKIPPED
+  status     String // PENDING | SENT | FAILED | SKIPPED
   error      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -205,12 +207,12 @@ model ClientLogo {
 }
 
 model Package {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?  @db.Text
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String? @db.Text
   price       Int
-  currency    String   @default("IDR")
-  duration    Int      @default(30)
+  currency    String  @default("IDR")
+  duration    Int     @default(30)
 
   // Limits
   maxContacts       Int @default(100)
@@ -220,9 +222,9 @@ model Package {
   maxGmailAccounts  Int @default(1)
 
   // Display
-  features   String?  @db.Text
-  isPopular  Boolean  @default(false)
-  urutan_ke  Int      @default(0)
+  features  String? @db.Text
+  isPopular Boolean @default(false)
+  urutan_ke Int     @default(0)
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -234,14 +236,14 @@ model Package {
 }
 
 model Subscription {
-  id         String   @id @default(cuid())
-  userId     String
-  packageId  String
-  status     String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
-  startDate  DateTime @default(now())
-  endDate    DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  packageId String
+  status    String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  startDate DateTime @default(now())
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   package Package @relation(fields: [packageId], references: [id])
@@ -250,23 +252,48 @@ model Subscription {
 }
 
 model Payment {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
   packageId     String?
-  orderId       String   @unique
+  orderId       String    @unique
   amount        Int
-  currency      String   @default("IDR")
-  status        String   @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
+  currency      String    @default("IDR")
+  status        String    @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
   paymentType   String?
   transactionId String?
   snapToken     String?
   snapUrl       String?
   paidAt        DateTime?
-  metadata      String?  @db.Text
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  metadata      String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("payment")
+}
+
+model GmailMessage {
+  id             String @id @default(cuid())
+  gmailMessageId String @unique
+  threadId       String
+
+  from    String?
+  to      String?
+  subject String?
+  snippet String?
+
+  internalDate DateTime?
+  labels       Json
+
+  raw Json
+
+  gmailAccountId String
+  gmailAccount   GmailAccount @relation(fields: [gmailAccountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gmailAccountId, internalDate])
+  @@map("gmailmessage")
 }
