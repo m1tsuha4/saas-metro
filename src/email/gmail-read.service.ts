@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { gmail_v1 } from 'googleapis';
 import { GoogleEmailService } from './google.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class GmailReadService {
   constructor(
     private readonly googleEmailService: GoogleEmailService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -13,6 +15,14 @@ export class GmailReadService {
    */
   async syncLatestMessages(fromEmail: string, maxResults = 20): Promise<void> {
     const gmail = await this.getGmailClient(fromEmail);
+
+    const account = await this.prisma.gmailAccount.findUnique({
+      where: { email: fromEmail },
+    });
+
+    if (!account) {
+      throw new BadRequestException('Gmail account not found in the system');
+    }
 
     const listRes = await gmail.users.messages.list({
       userId: 'me',
@@ -26,12 +36,31 @@ export class GmailReadService {
 
       const full = await this.getMessageDetail(fromEmail, msg.id);
 
-      console.log({
-        gmailMessageId: full.id,
-        subject: full.subject,
-        from: full.from,
-        snippet: full.snippet,
-        date: full.internalDate,
+      await this.prisma.gmailMessage.upsert({
+        where: {
+          gmailMessageId: full.id,
+        },
+        update: {
+          subject: full.subject,
+          snippet: full.snippet,
+          from: full.from,
+          to: full.to,
+          labels: full.labels ?? [],
+          internalDate: full.internalDate,
+          raw: JSON.parse(JSON.stringify(full.raw)),
+        },
+        create: {
+          gmailMessageId: full.id,
+          threadId: full.threadId,
+          subject: full.subject,
+          snippet: full.snippet,
+          from: full.from,
+          to: full.to,
+          labels: full.labels ?? [],
+          internalDate: full.internalDate,
+          raw: JSON.parse(JSON.stringify(full.raw)),
+          gmailAccountId: account.id,
+        },
       });
     }
   }

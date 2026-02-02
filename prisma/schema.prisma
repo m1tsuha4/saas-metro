@@ -284,7 +284,7 @@ model GmailMessage {
   snippet String?
 
   internalDate DateTime?
-  labels       Json
+  labels       String[]
 
   raw Json
 

@@ -128,7 +128,6 @@ export class AuthService {
 
     await this.sendVerificationEmail(user);
 
-
     return {
       success: true,
       message:

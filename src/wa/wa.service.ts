@@ -88,7 +88,7 @@ export class WaService {
   async connect(sessionId: string, ownerId: string, label?: string) {
     // Singleton guard
     const existing = this.sessions.get(sessionId);
-    if (existing?.connecting ||existing?.sock) {
+    if (existing?.connecting || existing?.sock) {
       return {
         sessionId,
         connected: existing.ready,
