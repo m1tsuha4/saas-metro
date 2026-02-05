@@ -617,7 +617,7 @@ export class AdminService {
 
   async findAllPackages() {
     const packages = await this.prisma.package.findMany({
-      orderBy: [{ urutan_ke: 'asc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
     });
 
     return { data: packages.map((pkg) => this.parsePackageFeatures(pkg)) };
@@ -637,17 +637,11 @@ export class AdminService {
 
   async createPackage(data: {
     name: string;
-    description?: string;
+    description: string;
     price: number;
-    duration?: number;
-    maxContacts?: number;
-    maxWaBroadcast?: number;
-    maxEmailBroadcast?: number;
-    maxWaSessions?: number;
-    maxGmailAccounts?: number;
+    currency?: string;
+    billingCycle: string;
     features?: string[];
-    isPopular?: boolean;
-    urutan_ke?: number;
   }) {
     const existing = await this.prisma.package.findUnique({
       where: { name: data.name },
@@ -662,15 +656,9 @@ export class AdminService {
         name: data.name,
         description: data.description,
         price: data.price,
-        duration: data.duration || 30,
-        maxContacts: data.maxContacts || 100,
-        maxWaBroadcast: data.maxWaBroadcast || 500,
-        maxEmailBroadcast: data.maxEmailBroadcast || 1000,
-        maxWaSessions: data.maxWaSessions || 1,
-        maxGmailAccounts: data.maxGmailAccounts || 1,
+        currency: data.currency || 'IDR',
+        billingCycle: data.billingCycle,
         features: data.features ? JSON.stringify(data.features) : null,
-        isPopular: data.isPopular || false,
-        urutan_ke: data.urutan_ke || 0,
       },
     });
 
@@ -687,15 +675,9 @@ export class AdminService {
       name?: string;
       description?: string;
       price?: number;
-      duration?: number;
-      maxContacts?: number;
-      maxWaBroadcast?: number;
-      maxEmailBroadcast?: number;
-      maxWaSessions?: number;
-      maxGmailAccounts?: number;
+      currency?: string;
+      billingCycle?: string;
       features?: string[];
-      isPopular?: boolean;
-      urutan_ke?: number;
       isActive?: boolean;
     },
   ) {

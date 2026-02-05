@@ -207,24 +207,13 @@ model ClientLogo {
 }
 
 model Package {
-  id          String  @id @default(cuid())
-  name        String  @unique
-  description String? @db.Text
-  price       Int
-  currency    String  @default("IDR")
-  duration    Int     @default(30)
-
-  // Limits
-  maxContacts       Int @default(100)
-  maxWaBroadcast    Int @default(500)
-  maxEmailBroadcast Int @default(1000)
-  maxWaSessions     Int @default(1)
-  maxGmailAccounts  Int @default(1)
-
-  // Display
-  features  String? @db.Text
-  isPopular Boolean @default(false)
-  urutan_ke Int     @default(0)
+  id           String  @id @default(cuid())
+  name         String  @unique
+  description  String  @db.Text
+  price        Int
+  currency     String  @default("IDR")
+  billingCycle String  @default("monthly") // 'monthly' or 'yearly'
+  features     String? @db.Text // JSON array of feature keys
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
