@@ -132,6 +132,7 @@ export class WaService {
     });
 
     runtime.sock = sock;
+    this.registerMessageListener(sock, sessionId);
 
     // Persist credentials
     sock.ev.on('creds.update', saveCreds);
@@ -938,5 +939,74 @@ export class WaService {
       responseType: 'arraybuffer',
     });
     return Buffer.from(r.data as any);
+  }
+
+  private registerMessageListener(
+    sock: ReturnType<typeof makeWASocket>,
+    sessionId: string,
+  ) {
+    sock.ev.on('messages.upsert', async (m) => {
+      if (m.type !== 'notify') return;
+
+      for (const msg of m.messages ?? []) {
+        try {
+          await this.handleIncomingMessage(sock, sessionId, msg);
+        } catch (err: any) {
+          this.logger.error(
+            `Failed processing message ${msg?.key?.id}: ${err.message}`,
+          );
+        }
+      }
+    });
+  }
+
+  private async handleIncomingMessage(
+    sock: ReturnType<typeof makeWASocket>,
+    sessionId: string,
+    msg: any,
+  ) {
+    if (!msg?.message) return;
+
+    const remoteJid = msg.key?.remoteJid;
+    const messageId = msg.key?.id;
+    const fromMe = msg.key?.fromMe;
+
+    if (!remoteJid || !messageId) return;
+
+    // ignore status broadcast
+    if (remoteJid === 'status@broadcast') return;
+
+    const isGroup = remoteJid.endsWith('@g.us');
+
+    const conversationJid = remoteJid;
+
+    // Extract message text safely
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      msg.message.imageMessage?.caption ||
+      msg.message.videoMessage?.caption ||
+      null;
+
+    const messageType = Object.keys(msg.message)[0] || 'unknown';
+
+    await this.prisma.whatsAppMessage.upsert({
+      where: { messageId },
+      update: {},
+      create: {
+        sessionId,
+        phone: conversationJid,
+        direction: fromMe ? 'OUTGOING' : 'INCOMING',
+        messageId,
+        text,
+        type: messageType,
+        rawJson: msg,
+        status: fromMe ? 'SENT' : 'RECEIVED',
+      },
+    });
+
+    this.logger.log(
+      `Saved ${messageType} (${fromMe ? 'OUT' : 'IN'}) in ${conversationJid}`,
+    );
   }
 }
