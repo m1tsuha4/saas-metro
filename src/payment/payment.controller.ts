@@ -12,7 +12,7 @@ import { User } from 'src/common/decorators/user.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) { }
+  constructor(private readonly paymentService: PaymentService) {}
 
   // Public: Get available packages with client key
   @Get('packages')

@@ -30,7 +30,7 @@ export class EmailController {
     private gsvc: GoogleEmailService,
     private emailSvc: EmailService,
     private GmailReadService: GmailReadService,
-  ) { }
+  ) {}
 
   /** 1) Start Google connect – redirects to Google */
   @ApiBearerAuth()

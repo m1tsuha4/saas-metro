@@ -26,7 +26,7 @@ import { User } from 'src/common/decorators/user.decorator';
 @ApiBearerAuth()
 @Controller('wa')
 export class WaController {
-  constructor(private readonly wa: WaService) { }
+  constructor(private readonly wa: WaService) {}
 
   @Get('sessions')
   async listSessions(@User('id') ownerId: string) {
@@ -118,7 +118,7 @@ export class WaController {
     dto: GroupDmMembersTextDto,
   ) {
     const data = await this.wa.groupDmMembersText(dto);
-    return { success: true, ...data };
+    return data;
   }
 
   @Post('group/dm-members-image')

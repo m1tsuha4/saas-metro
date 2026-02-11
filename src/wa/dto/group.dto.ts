@@ -24,7 +24,6 @@ export const GroupDmMembersTextSchema = z.object({
   text: z.string().min(1),
   delayMs: z.number().int().min(0).default(1500),
   jitterMs: z.number().int().min(0).default(600),
-  checkNumber: z.boolean().default(true),
   includeAdmins: z.boolean().default(true),
 });
 
@@ -39,7 +38,6 @@ export const GroupDmMembersImageSchema = z.object({
   caption: z.string().optional(),
   delayMs: z.number().int().min(0).default(1800),
   jitterMs: z.number().int().min(0).default(700),
-  checkNumber: z.boolean().default(true),
   includeAdmins: z.boolean().default(true),
 });
 

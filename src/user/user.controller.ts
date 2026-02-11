@@ -39,7 +39,7 @@ const storage = diskStorage({
 
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) { }
+  constructor(private readonly userService: UserService) {}
 
   @Post()
   register(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto) {

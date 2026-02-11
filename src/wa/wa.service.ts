@@ -123,7 +123,7 @@ export class WaService {
       },
       logger: pino({ level: 'info' }),
       browser: [
-        'SaaS-Metro',
+        'Mitbiz',
         process.env.NODE_ENV ?? 'local',
         sessionId.slice(0, 6),
       ],
@@ -706,7 +706,6 @@ export class WaService {
     text: string;
     delayMs?: number;
     jitterMs?: number;
-    checkNumber?: boolean;
     includeAdmins?: boolean;
   }) {
     const {
@@ -715,55 +714,66 @@ export class WaService {
       text,
       delayMs = 1500,
       jitterMs = 600,
-      checkNumber = true,
       includeAdmins = true,
     } = dto;
 
-    const meta = await this.getGroupParticipants(sessionId, groupJid);
-    const people = meta.participants ?? [];
-    const targets = people.filter((p) =>
+    const rt = await this.ensureConnected(sessionId);
+
+    if (!rt.sock) {
+      throw new Error('WhatsApp session not found');
+    }
+
+    // Get group metadata
+    const meta = await rt.sock.groupMetadata(groupJid);
+    const participants = meta.participants ?? [];
+
+    // Filter participants
+    const targets = participants.filter((p) =>
       includeAdmins ? true : !(p.admin === 'admin' || p.admin === 'superadmin'),
     );
 
     const results: Array<{
-      phone: string;
-      status: 'SENT' | 'SKIPPED' | 'FAILED';
+      jid: string;
+      status: 'SENT' | 'FAILED';
       error?: string;
     }> = [];
 
-    for (const p of targets) {
-      const jid = p.id; // '62xxxxx@s.whatsapp.net'
-      const phone = jid.split('@')[0];
+    // Loop safely
+    for (const participant of targets) {
+      const jid = participant.id; // FULL JID (MD safe)
 
       try {
-        if (checkNumber) {
-          const chk = await this.checkNumber(sessionId, phone);
-          if (!chk.exists) {
-            results.push({
-              phone,
-              status: 'SKIPPED',
-              error: 'Not on WhatsApp',
-            });
-            continue;
-          }
+        // Skip yourself
+        if (jid === rt.sock.user?.id) {
+          continue;
         }
-        await this.sendText(sessionId, phone, text);
-        results.push({ phone, status: 'SENT' });
-        await this.sleepJitter(delayMs, jitterMs);
-      } catch (e: any) {
+
+        await rt.sock.sendMessage(jid, { text });
+
         results.push({
-          phone,
-          status: 'FAILED',
-          error: e?.message || 'Send failed',
+          jid,
+          status: 'SENT',
         });
-        await this.sleepJitter(Math.max(delayMs, 1600), jitterMs);
+
+        await this.sleepJitter(delayMs, jitterMs);
+      } catch (error: any) {
+        results.push({
+          jid,
+          status: 'FAILED',
+          error: error?.message || 'Send failed',
+        });
+
+        // Longer delay on failure (anti-ban safety)
+        await this.sleepJitter(Math.max(delayMs, 2000), jitterMs);
       }
     }
 
     return {
+      success: true,
       groupJid,
       groupSubject: meta.subject,
-      total: results.length,
+      totalTargeted: targets.length,
+      totalProcessed: results.length,
       summary: this.countStatuses(results),
       results,
     };

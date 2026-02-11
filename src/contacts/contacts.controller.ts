@@ -33,7 +33,7 @@ import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 @ApiBearerAuth()
 @Controller('contacts')
 export class ContactsController {
-  constructor(private readonly contactsService: ContactsService) { }
+  constructor(private readonly contactsService: ContactsService) {}
 
   @Post('import')
   @UseInterceptors(
