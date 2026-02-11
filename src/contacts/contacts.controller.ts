@@ -11,6 +11,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ContactsService } from './contacts.service';
@@ -29,9 +30,10 @@ import {
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 
 @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 @Controller('contacts')
 export class ContactsController {
-  constructor(private readonly contactsService: ContactsService) {}
+  constructor(private readonly contactsService: ContactsService) { }
 
   @Post('import')
   @UseInterceptors(

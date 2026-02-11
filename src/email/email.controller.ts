@@ -9,6 +9,7 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { GoogleEmailService } from './google.service';
 import { EmailService } from './email.service';
@@ -29,9 +30,10 @@ export class EmailController {
     private gsvc: GoogleEmailService,
     private emailSvc: EmailService,
     private GmailReadService: GmailReadService,
-  ) {}
+  ) { }
 
   /** 1) Start Google connect – redirects to Google */
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('google/connect')
   startConnect(@Req() req: Request, @Res() res: Response) {
@@ -40,6 +42,7 @@ export class EmailController {
     const url = this.gsvc.getAuthUrl(ownerId);
     return res.redirect(url);
   }
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('google/connect-url')
   getConnectUrl(@Req() req) {
@@ -67,6 +70,7 @@ export class EmailController {
   }
 
   /** Get list of connected Gmail accounts */
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('accounts')
   async getAccounts(@Req() req) {
@@ -77,6 +81,7 @@ export class EmailController {
   }
 
   /** 3) Send a single test email */
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('send-test')
   async sendTest(
@@ -92,6 +97,7 @@ export class EmailController {
   }
 
   /** 4) Broadcast */
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('broadcast')
   async broadcast(
@@ -110,6 +116,7 @@ export class EmailController {
     return { success: true };
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('inbox')
   async inbox(

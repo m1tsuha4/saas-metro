@@ -9,6 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { CreateUserDto, CreateUserSchema } from './dto/create-user.dto';
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
@@ -38,7 +39,7 @@ const storage = diskStorage({
 
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(private readonly userService: UserService) { }
 
   @Post()
   register(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto) {
@@ -56,6 +57,7 @@ export class UserController {
   }
 
   @Patch(':id')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('picture', {
@@ -74,6 +76,7 @@ export class UserController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   remove(@Param('id') id: string) {
     return this.userService.deleteUser(id);

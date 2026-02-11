@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { WaService } from './wa.service';
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 import { SendDto, SendSchema } from './dto/send.dto';
@@ -22,9 +23,10 @@ import {
 import { User } from 'src/common/decorators/user.decorator';
 
 @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 @Controller('wa')
 export class WaController {
-  constructor(private readonly wa: WaService) {}
+  constructor(private readonly wa: WaService) { }
 
   @Get('sessions')
   async listSessions(@User('id') ownerId: string) {

@@ -11,6 +11,7 @@ import {
   BadRequestException,
   Query,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -32,7 +33,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UserService,
-  ) {}
+  ) { }
 
   @Post('register')
   async register(
@@ -62,12 +63,14 @@ export class AuthController {
     return res.redirect(redirectUrl);
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('me')
   getMe(@User() user) {
     return user;
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Patch('me')
   async updateUser(
@@ -77,6 +80,7 @@ export class AuthController {
     return this.userService.updateUser(user.id, dto);
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(@User() user, @Req() request: Request) {

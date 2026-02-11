@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 import {
   CreateOrderDto,
@@ -11,7 +12,7 @@ import { User } from 'src/common/decorators/user.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(private readonly paymentService: PaymentService) { }
 
   // Public: Get available packages with client key
   @Get('packages')
@@ -21,6 +22,7 @@ export class PaymentController {
 
   // User: Create payment order
   @Post('create-order')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   async createOrder(
     @User() user: any,
@@ -37,6 +39,7 @@ export class PaymentController {
 
   // User: Get payment history
   @Get('history')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   async getPaymentHistory(@User() user: any) {
     return this.paymentService.getPaymentHistory(user.id);
@@ -44,6 +47,7 @@ export class PaymentController {
 
   // User: Get active subscription
   @Get('subscription')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   async getActiveSubscription(@User() user: any) {
     return this.paymentService.getActiveSubscription(user.id);
@@ -51,6 +55,7 @@ export class PaymentController {
 
   // User: Check payment status
   @Get('status/:orderId')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   async checkPaymentStatus(@Param('orderId') orderId: string) {
     return this.paymentService.checkPaymentStatus(orderId);
