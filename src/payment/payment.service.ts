@@ -15,7 +15,7 @@ export class PaymentService {
   constructor(
     private prisma: PrismaService,
     private midtransService: MidtransService,
-  ) { }
+  ) {}
 
   // Get all active packages for public view
   async getPackages() {
@@ -43,7 +43,7 @@ export class PaymentService {
         'Email support',
         '1 connected account',
       ],
-      'Pro': [
+      Pro: [
         'Unlimited messages',
         'Advanced analytics',
         'Priority support',
@@ -51,7 +51,7 @@ export class PaymentService {
         'Custom templates',
         'API access',
       ],
-      'Enterprise': [
+      Enterprise: [
         'Everything in Pro',
         'Dedicated support',
         'Custom integrations',

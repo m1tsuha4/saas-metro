@@ -7,17 +7,16 @@ import {
 import { UserRole } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateAdminUserDto } from './dto/create-user.dto';
+import { UpdateAdminUserDto } from './dto/update-user.dto';
 import { UserQueryDto } from './dto/user-query.dto';
 import { PaymentQueryDto, UpdatePaymentDto } from './dto/payment-query.dto';
 import * as bcrypt from 'bcryptjs';
 import * as ExcelJS from 'exceljs';
 
-
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   // ==================== DASHBOARD ====================
 
@@ -83,8 +82,14 @@ export class AdminService {
       totalTransaksi,
       pertumbuhanAkun: this.hitungPertumbuhan(totalAkun, totalAkunBulanLalu),
       pertumbuhanAktif: this.hitungPertumbuhan(akunAktif, akunAktifBulanLalu),
-      pertumbuhanNonaktif: this.hitungPertumbuhan(akunNonaktif, akunNonaktifBulanLalu),
-      pertumbuhanTransaksi: this.hitungPertumbuhan(totalTransaksi, totalTransaksiBulanLalu),
+      pertumbuhanNonaktif: this.hitungPertumbuhan(
+        akunNonaktif,
+        akunNonaktifBulanLalu,
+      ),
+      pertumbuhanTransaksi: this.hitungPertumbuhan(
+        totalTransaksi,
+        totalTransaksiBulanLalu,
+      ),
     };
   }
 
@@ -121,7 +126,20 @@ export class AdminService {
   // GET /admin/dashboard/user-bulanan
   async getUserBulanan() {
     const now = new Date();
-    const namaBulan = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const namaBulan = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     const userBaruBulanan: { bulan: string; jumlah: number }[] = [];
 
     for (let i = 0; i < 12; i++) {
@@ -230,7 +248,8 @@ export class AdminService {
   async findAllUsers(query: UserQueryDto) {
     const page = query.page || 1;
     const limit = query.limit || 10;
-    const { search, role, status, startDate, endDate, sortBy, sortOrder } = query;
+    const { search, role, status, startDate, endDate, sortBy, sortOrder } =
+      query;
     const skip = (page - 1) * limit;
     const now = new Date();
 
@@ -399,19 +418,19 @@ export class AdminService {
     const activeSubscription = user.subscriptions[0];
     const subscription = activeSubscription
       ? {
-        packageName: activeSubscription.package.name,
-        status: activeSubscription.status,
-        startDate: activeSubscription.startDate.toLocaleDateString('id-ID', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        }),
-        endDate: activeSubscription.endDate.toLocaleDateString('id-ID', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        }),
-      }
+          packageName: activeSubscription.package.name,
+          status: activeSubscription.status,
+          startDate: activeSubscription.startDate.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          }),
+          endDate: activeSubscription.endDate.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          }),
+        }
       : null;
 
     return {
@@ -428,7 +447,7 @@ export class AdminService {
     };
   }
 
-  async createUser(dto: CreateUserDto) {
+  async createUser(dto: CreateAdminUserDto) {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -464,7 +483,7 @@ export class AdminService {
     };
   }
 
-  async updateUser(id: string, dto: UpdateUserDto) {
+  async updateUser(id: string, dto: UpdateAdminUserDto) {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -810,7 +829,12 @@ export class AdminService {
       }),
       paymentMethod: payment.paymentType || '-',
       totalPembayaran: payment.amount,
-      status: payment.status === 'SUCCESS' ? 'Paid' : payment.status === 'PENDING' ? 'Pending' : 'Failed',
+      status:
+        payment.status === 'SUCCESS'
+          ? 'Paid'
+          : payment.status === 'PENDING'
+            ? 'Pending'
+            : 'Failed',
     }));
 
     return {

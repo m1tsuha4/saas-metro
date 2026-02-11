@@ -20,15 +20,15 @@ async function bootstrap() {
   });
 
   const config = new DocumentBuilder()
-    .setTitle('Altama API')
-    .setDescription('Altama API documentation')
+    .setTitle('SaaS Metro API')
+    .setDescription('SaaS Metro API documentation')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
 
   const swaggerCustomOptions: SwaggerCustomOptions = {
-    customSiteTitle: 'Altama API Docs',
+    customSiteTitle: 'SaaS Metro API Docs',
     customJs: [
       'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.3.2/swagger-ui-bundle.js',
       'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.3.2/swagger-ui-standalone-preset.js',

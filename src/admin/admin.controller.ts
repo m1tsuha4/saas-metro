@@ -20,8 +20,8 @@ import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { AdminService } from './admin.service';
 import { CreateAdminDto, CreateAdminSchema } from './dto/create-admin.dto';
-import { CreateUserDto, CreateUserSchema } from './dto/create-user.dto';
-import { UpdateUserDto, UpdateUserSchema } from './dto/update-user.dto';
+import { CreateAdminUserDto, CreateUserSchema } from './dto/create-user.dto';
+import { UpdateAdminUserDto, UpdateUserSchema } from './dto/update-user.dto';
 import { UserQueryDto, UserQuerySchema } from './dto/user-query.dto';
 import {
   CreatePackageDto,
@@ -64,7 +64,7 @@ const logoStorage = diskStorage({
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) { }
+  constructor(private readonly adminService: AdminService) {}
 
   // ==================== DASHBOARD ====================
   @Get('dashboard/statistik')
@@ -115,7 +115,7 @@ export class AdminController {
 
   @Post('users')
   async createUser(
-    @Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto,
+    @Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateAdminUserDto,
   ) {
     return this.adminService.createUser(dto);
   }
@@ -123,7 +123,7 @@ export class AdminController {
   @Patch('users/:id')
   async updateUser(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(UpdateUserSchema)) dto: UpdateUserDto,
+    @Body(new ZodValidationPipe(UpdateUserSchema)) dto: UpdateAdminUserDto,
   ) {
     return this.adminService.updateUser(id, dto);
   }
@@ -231,7 +231,10 @@ export class AdminController {
   ) {
     const buffer = await this.adminService.exportPaymentsToExcel(query);
     const fileName = `payments_export_${new Date().toISOString().split('T')[0]}.xlsx`;
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
     res.send(buffer);
   }

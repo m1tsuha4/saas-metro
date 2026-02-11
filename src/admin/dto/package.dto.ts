@@ -26,7 +26,7 @@ export const CreatePackageSchema = z.object({
   features: z.array(PackageFeatureEnum).optional(),
 });
 
-export class CreatePackageDto extends createZodDto(CreatePackageSchema) { }
+export class CreatePackageDto extends createZodDto(CreatePackageSchema) {}
 
 // Schema untuk update package
 export const UpdatePackageSchema = z.object({
@@ -39,4 +39,4 @@ export const UpdatePackageSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export class UpdatePackageDto extends createZodDto(UpdatePackageSchema) { }
+export class UpdatePackageDto extends createZodDto(UpdatePackageSchema) {}

@@ -9,4 +9,4 @@ export const UpdateUserSchema = z.object({
   telephone: z.string().optional(),
 });
 
-export class UpdateUserDto extends createZodDto(UpdateUserSchema) {}
+export class UpdateAdminUserDto extends createZodDto(UpdateUserSchema) {}

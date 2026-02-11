@@ -10,11 +10,13 @@ export const UserQuerySchema = z.object({
   status: z.enum(['all', 'active', 'inactive']).optional().default('all'),
   // Date range filter (sign-up date)
   startDate: z.string().optional(), // YYYY-MM-DD
-  endDate: z.string().optional(),   // YYYY-MM-DD
+  endDate: z.string().optional(), // YYYY-MM-DD
   // Sorting
-  sortBy: z.enum(['id', 'email', 'createdAt', 'planType']).optional().default('createdAt'),
+  sortBy: z
+    .enum(['id', 'email', 'createdAt', 'planType'])
+    .optional()
+    .default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
 });
 
-export class UserQueryDto extends createZodDto(UserQuerySchema) { }
-
+export class UserQueryDto extends createZodDto(UserQuerySchema) {}
