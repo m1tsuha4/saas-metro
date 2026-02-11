@@ -7,11 +7,13 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -32,6 +34,12 @@ import { JwtAuthGuard } from 'src/auth/guard/jwt-guard.auth';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import {
+  PaymentQueryDto,
+  PaymentQuerySchema,
+  UpdatePaymentDto,
+  UpdatePaymentSchema,
+} from './dto/payment-query.dto';
 
 // Ensure uploads directory exists
 const logoFolder = './uploads/client-logos';
@@ -56,7 +64,33 @@ const logoStorage = diskStorage({
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
+
+  // ==================== DASHBOARD ====================
+  @Get('dashboard/statistik')
+  async getStatistik() {
+    return this.adminService.getStatistik();
+  }
+
+  @Get('dashboard/user-terbaru')
+  async getUserTerbaru() {
+    return this.adminService.getUserTerbaru();
+  }
+
+  @Get('dashboard/user-bulanan')
+  async getUserBulanan() {
+    return this.adminService.getUserBulanan();
+  }
+
+  @Get('dashboard/pembayaran-terbaru')
+  async getPembayaranTerbaru() {
+    return this.adminService.getPembayaranTerbaru();
+  }
+
+  @Get('dashboard/status-sistem')
+  async getStatusSistem() {
+    return this.adminService.getStatusSistem();
+  }
 
   // ==================== ADMIN REGISTER ====================
   @Post('register')
@@ -179,5 +213,44 @@ export class AdminController {
   @Delete('packages/:id')
   async deletePackage(@Param('id') id: string) {
     return this.adminService.deletePackage(id);
+  }
+
+  // ==================== PAYMENT MANAGEMENT ====================
+
+  @Get('payments')
+  async findAllPayments(
+    @Query(new ZodValidationPipe(PaymentQuerySchema)) query: PaymentQueryDto,
+  ) {
+    return this.adminService.findAllPayments(query);
+  }
+
+  @Get('payments/export')
+  async exportPayments(
+    @Query(new ZodValidationPipe(PaymentQuerySchema)) query: PaymentQueryDto,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.adminService.exportPaymentsToExcel(query);
+    const fileName = `payments_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+    res.send(buffer);
+  }
+
+  @Get('payments/:id')
+  async findPaymentById(@Param('id') id: string) {
+    return this.adminService.findPaymentById(id);
+  }
+
+  @Patch('payments/:id')
+  async updatePayment(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(UpdatePaymentSchema)) dto: UpdatePaymentDto,
+  ) {
+    return this.adminService.updatePayment(id, dto);
+  }
+
+  @Delete('payments/:id')
+  async deletePayment(@Param('id') id: string) {
+    return this.adminService.deletePayment(id);
   }
 }

@@ -15,22 +15,52 @@ export class PaymentService {
   constructor(
     private prisma: PrismaService,
     private midtransService: MidtransService,
-  ) {}
+  ) { }
 
   // Get all active packages for public view
   async getPackages() {
     const packages = await this.prisma.package.findMany({
       where: { isActive: true },
-      orderBy: [{ urutan_ke: 'asc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
     });
 
     return {
       data: packages.map((pkg) => ({
         ...pkg,
         features: pkg.features ? JSON.parse(pkg.features) : [],
+        benefits: this.getPackageBenefits(pkg.name),
       })),
       clientKey: this.midtransService.getClientKey(),
     };
+  }
+
+  // Helper: Return benefits for landing page display
+  private getPackageBenefits(packageName: string): string[] {
+    const benefitsMap: Record<string, string[]> = {
+      'Free Trial': [
+        'Up to 100 messages/day',
+        'Basic analytics',
+        'Email support',
+        '1 connected account',
+      ],
+      'Pro': [
+        'Unlimited messages',
+        'Advanced analytics',
+        'Priority support',
+        'Unlimited accounts',
+        'Custom templates',
+        'API access',
+      ],
+      'Enterprise': [
+        'Everything in Pro',
+        'Dedicated support',
+        'Custom integrations',
+        'SLA guarantee',
+        'Team collaboration',
+        'White-label option',
+      ],
+    };
+    return benefitsMap[packageName] || [];
   }
 
   // Create order and get Snap token
@@ -182,7 +212,9 @@ export class PaymentService {
       if (pkg) {
         const startDate = new Date();
         const endDate = new Date();
-        endDate.setDate(endDate.getDate() + pkg.duration);
+        // Calculate duration based on billingCycle
+        const durationDays = pkg.billingCycle === 'yearly' ? 365 : 30;
+        endDate.setDate(endDate.getDate() + durationDays);
 
         await this.prisma.subscription.create({
           data: {

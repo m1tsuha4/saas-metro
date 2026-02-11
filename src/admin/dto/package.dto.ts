@@ -1,39 +1,42 @@
 import { createZodDto } from '@anatine/zod-nestjs';
 import { z } from 'zod';
 
+// Enum untuk fitur yang tersedia (developer tambah di sini kalau ada module baru)
+export const PackageFeatureEnum = z.enum([
+  'whatsapp_chat_console',
+  'email_chat_console',
+  'ai_training_config',
+  'broadcast_scheduling',
+]);
+
+export type PackageFeature = z.infer<typeof PackageFeatureEnum>;
+
+// Enum untuk billing cycle
+export const BillingCycleEnum = z.enum(['monthly', 'yearly']);
+
+export type BillingCycle = z.infer<typeof BillingCycleEnum>;
+
+// Schema untuk create package
 export const CreatePackageSchema = z.object({
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string().min(1),
   price: z.number().min(0),
   currency: z.string().default('IDR'),
-  duration: z.number().min(1).default(30),
-  maxContacts: z.number().default(100),
-  maxWaBroadcast: z.number().default(500),
-  maxEmailBroadcast: z.number().default(1000),
-  maxWaSessions: z.number().default(1),
-  maxGmailAccounts: z.number().default(1),
-  features: z.array(z.string()).optional(),
-  isPopular: z.boolean().default(false),
-  urutan_ke: z.number().default(0),
+  billingCycle: BillingCycleEnum,
+  features: z.array(PackageFeatureEnum).optional(),
 });
 
-export class CreatePackageDto extends createZodDto(CreatePackageSchema) {}
+export class CreatePackageDto extends createZodDto(CreatePackageSchema) { }
 
+// Schema untuk update package
 export const UpdatePackageSchema = z.object({
   name: z.string().min(1).optional(),
-  description: z.string().optional(),
+  description: z.string().min(1).optional(),
   price: z.number().min(0).optional(),
   currency: z.string().optional(),
-  duration: z.number().min(1).optional(),
-  maxContacts: z.number().optional(),
-  maxWaBroadcast: z.number().optional(),
-  maxEmailBroadcast: z.number().optional(),
-  maxWaSessions: z.number().optional(),
-  maxGmailAccounts: z.number().optional(),
-  features: z.array(z.string()).optional(),
-  isPopular: z.boolean().optional(),
-  urutan_ke: z.number().optional(),
+  billingCycle: BillingCycleEnum.optional(),
+  features: z.array(PackageFeatureEnum).optional(),
   isActive: z.boolean().optional(),
 });
 
-export class UpdatePackageDto extends createZodDto(UpdatePackageSchema) {}
+export class UpdatePackageDto extends createZodDto(UpdatePackageSchema) { }
