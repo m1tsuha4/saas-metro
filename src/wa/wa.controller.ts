@@ -127,6 +127,6 @@ export class WaController {
     dto: GroupDmMembersImageDto,
   ) {
     const data = await this.wa.groupDmMembersImage(dto);
-    return { success: true, ...data };
+    return data;
   }
 }

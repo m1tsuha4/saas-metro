@@ -720,7 +720,7 @@ export class WaService {
     const rt = await this.ensureConnected(sessionId);
 
     if (!rt.sock) {
-      throw new Error('WhatsApp session not found');
+      throw new BadRequestException('WhatsApp session not found');
     }
 
     // Get group metadata
@@ -787,7 +787,6 @@ export class WaService {
     caption?: string;
     delayMs?: number;
     jitterMs?: number;
-    checkNumber?: boolean;
     includeAdmins?: boolean;
   }) {
     const {
@@ -797,11 +796,14 @@ export class WaService {
       caption,
       delayMs = 1800,
       jitterMs = 700,
-      checkNumber = true,
       includeAdmins = true,
     } = dto;
 
     const rt = await this.ensureConnected(sessionId);
+
+    if (!rt.sock) {
+      throw new BadRequestException('WhatsApp session not found');
+    }
 
     const meta = await this.getGroupParticipants(sessionId, groupJid);
     const img = await this.fetchImageBuffer(imageUrl);
@@ -812,44 +814,36 @@ export class WaService {
     );
 
     const results: Array<{
-      phone: string;
-      status: 'SENT' | 'SKIPPED' | 'FAILED';
+      jid: string;
+      status: 'SENT' | 'FAILED';
       error?: string;
     }> = [];
 
-    for (const p of targets) {
-      const jid = p.id;
-      const phone = jid.split('@')[0];
+    for (const participant of targets) {
+      const jid = participant.id;
 
       try {
-        if (checkNumber) {
-          const chk = await this.checkNumber(sessionId, phone);
-          if (!chk.exists) {
-            results.push({
-              phone,
-              status: 'SKIPPED',
-              error: 'Not on WhatsApp',
-            });
-            continue;
-          }
+        if (jid === rt.sock.user?.id) {
+          continue;
         }
         await rt.sock.sendMessage(jid, {
           image: img,
           caption: caption || undefined,
         });
-        results.push({ phone, status: 'SENT' });
+        results.push({ jid, status: 'SENT' });
         await this.sleepJitter(delayMs, jitterMs);
       } catch (e: any) {
         results.push({
-          phone,
+          jid,
           status: 'FAILED',
           error: e?.message || 'Send failed',
         });
-        await this.sleepJitter(Math.max(delayMs, 1800), jitterMs);
+        await this.sleepJitter(Math.max(delayMs, 2000), jitterMs);
       }
     }
 
     return {
+      success: true,
       groupJid,
       groupSubject: meta.subject,
       total: results.length,
