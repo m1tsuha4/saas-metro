@@ -129,4 +129,20 @@ export class WaController {
     const data = await this.wa.groupDmMembersImage(dto);
     return data;
   }
+
+  @Get('conversations/:sessionId/:jid')
+  async conversations(
+    @Param('sessionId') sessionId: string,
+    @Param('jid') jid: string,
+  ) {
+    return this.wa.getConversations({ sessionId, jid });
+  }
+
+  @Post('conversations/:sessionId/:jid/mark-as-read')
+  async markConversationAsRead(
+    @Param('sessionId') sessionId: string,
+    @Param('jid') jid: string,
+  ) {
+    return this.wa.markConversationAsRead(sessionId, jid);
+  }
 }

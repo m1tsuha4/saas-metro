@@ -288,3 +288,25 @@ model GmailMessage {
   @@index([gmailAccountId, internalDate])
   @@map("gmailmessage")
 }
+
+model WhatsAppConversation {
+  id              String   @id @default(cuid())
+  sessionId       String
+  jid             String   // conversation identifier (remoteJid)
+  name            String?  // optional display name
+  isGroup         Boolean  @default(false)
+  lastMessageId   String?
+  lastMessageText String?
+  lastMessageType String?
+  lastMessageAt   DateTime?
+  unreadCount     Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sessionId, jid])
+  @@index([sessionId])
+  @@index([lastMessageAt])
+  @@map("whatsappconversation")
+}
+

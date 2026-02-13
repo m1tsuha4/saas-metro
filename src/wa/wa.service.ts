@@ -274,6 +274,17 @@ export class WaService {
       this.logger.warn(`sendMessage returned no messageId for ${jid}`);
     }
 
+    if (messageId) {
+      await this.upsertConversation({
+        sessionId,
+        jid,
+        text,
+        messageType: 'conversation',
+        messageId,
+        fromMe: true,
+      });
+    }
+
     return { messageId, to: jid };
   }
 
@@ -853,6 +864,43 @@ export class WaService {
     };
   }
 
+  public async getConversations(params: {
+    sessionId: string;
+    jid: string;
+    cursor?: string; // messageId cursor
+    limit?: number;
+  }) {
+    const { sessionId, jid, cursor, limit = 30 } = params;
+
+    return this.prisma.whatsAppMessage.findMany({
+      where: {
+        sessionId,
+        phone: jid,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      ...(cursor && {
+        skip: 1,
+        cursor: { id: cursor },
+      }),
+    });
+  }
+
+  public async markConversationAsRead(sessionId: string, jid: string) {
+    await this.prisma.whatsAppConversation.update({
+      where: {
+        sessionId_jid: { sessionId, jid },
+      },
+      data: {
+        unreadCount: 0,
+      },
+    });
+
+    return { success: true };
+  }
+
   // small helpers you can place near top/bottom:
   private sleep(ms: number) {
     return new Promise((res) => setTimeout(res, ms));
@@ -968,6 +1016,7 @@ export class WaService {
     if (!msg?.message) return;
 
     const remoteJid = msg.key?.remoteJid;
+    const phone = msg.key?.senderPn;
     const messageId = msg.key?.id;
     const fromMe = msg.key?.fromMe;
 
@@ -1005,8 +1054,56 @@ export class WaService {
       },
     });
 
+    await this.upsertConversation({
+      sessionId,
+      jid: remoteJid,
+      text,
+      messageType,
+      messageId,
+      fromMe,
+    });
+
     this.logger.log(
       `Saved ${messageType} (${fromMe ? 'OUT' : 'IN'}) in ${conversationJid}`,
     );
+  }
+
+  private async upsertConversation(params: {
+    sessionId: string;
+    jid: string;
+    text: string | null;
+    messageType: string;
+    messageId: string;
+    fromMe: boolean;
+  }) {
+    const { sessionId, jid, text, messageType, messageId, fromMe } = params;
+
+    await this.prisma.whatsAppConversation.upsert({
+      where: {
+        sessionId_jid: {
+          sessionId,
+          jid,
+        },
+      },
+      update: {
+        lastMessageId: messageId,
+        lastMessageText: text,
+        lastMessageType: messageType,
+        lastMessageAt: new Date(),
+        unreadCount: fromMe
+          ? { set: 0 } // reset if we sent it
+          : { increment: 1 },
+      },
+      create: {
+        sessionId,
+        jid,
+        isGroup: jid.endsWith('@g.us'),
+        lastMessageId: messageId,
+        lastMessageText: text,
+        lastMessageType: messageType,
+        lastMessageAt: new Date(),
+        unreadCount: fromMe ? 0 : 1,
+      },
+    });
   }
 }
