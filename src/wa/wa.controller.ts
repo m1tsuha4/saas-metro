@@ -130,6 +130,11 @@ export class WaController {
     return data;
   }
 
+  @Get('list-conversations/:sessionId')
+  async listConversations(@Param('sessionId') sessionId: string) {
+    return this.wa.listConversations({ sessionId });
+  }
+
   @Get('conversations/:sessionId/:jid')
   async conversations(
     @Param('sessionId') sessionId: string,

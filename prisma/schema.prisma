@@ -310,3 +310,35 @@ model WhatsAppConversation {
   @@map("whatsappconversation")
 }
 
+model AiAgent {
+  id            String   @id @default(cuid())
+  ownerId       String
+  sessionId     String   // connect to whatsAppSession
+  name          String
+  isEnabled     Boolean  @default(false)
+  mode          String   @default("BOT") // BOT | HUMAN
+  model         String   @default("gpt-4o-mini")
+  temperature   Float    @default(0.7)
+  systemPrompt  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AiKnowledgeFile {
+  id        String   @id @default(cuid())
+  agentId   String
+  fileName  String
+  fileUrl   String
+  status    String   @default("PROCESSING") // PROCESSING | READY | FAILED
+  createdAt DateTime @default(now())
+}
+
+model AiEmbedding {
+  id         String   @id @default(cuid())
+  agentId    String
+  content    String
+  embedding  Json     // store vector
+  createdAt  DateTime @default(now())
+}
+
+

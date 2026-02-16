@@ -14,6 +14,7 @@ import { EmailModule } from './email/email.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AdminModule } from './admin/admin.module';
 import { PaymentModule } from './payment/payment.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PaymentModule } from './payment/payment.module';
     ContactsModule,
     AdminModule,
     PaymentModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService, WinstonLoggerService],

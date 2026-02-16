@@ -864,6 +864,18 @@ export class WaService {
     };
   }
 
+  public async listConversations(params: { sessionId: string }) {
+    const { sessionId } = params;
+    return this.prisma.whatsAppConversation.findMany({
+      where: {
+        sessionId,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+  }
+
   public async getConversations(params: {
     sessionId: string;
     jid: string;
@@ -1016,9 +1028,9 @@ export class WaService {
     if (!msg?.message) return;
 
     const remoteJid = msg.key?.remoteJid;
-    const phone = msg.key?.senderPn;
     const messageId = msg.key?.id;
     const fromMe = msg.key?.fromMe;
+    const pushName = msg.pushName;
 
     if (!remoteJid || !messageId) return;
 
@@ -1058,6 +1070,7 @@ export class WaService {
       sessionId,
       jid: remoteJid,
       text,
+      name: pushName,
       messageType,
       messageId,
       fromMe,
@@ -1072,11 +1085,13 @@ export class WaService {
     sessionId: string;
     jid: string;
     text: string | null;
+    name?: string | null;
     messageType: string;
     messageId: string;
     fromMe: boolean;
   }) {
-    const { sessionId, jid, text, messageType, messageId, fromMe } = params;
+    const { sessionId, jid, text, name, messageType, messageId, fromMe } =
+      params;
 
     await this.prisma.whatsAppConversation.upsert({
       where: {
@@ -1093,10 +1108,12 @@ export class WaService {
         unreadCount: fromMe
           ? { set: 0 } // reset if we sent it
           : { increment: 1 },
+        ...(name && { name }),
       },
       create: {
         sessionId,
         jid,
+        name: name ?? null,
         isGroup: jid.endsWith('@g.us'),
         lastMessageId: messageId,
         lastMessageText: text,
