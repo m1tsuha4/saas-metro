@@ -1030,7 +1030,6 @@ export class WaService {
     const remoteJid = msg.key?.remoteJid;
     const messageId = msg.key?.id;
     const fromMe = msg.key?.fromMe;
-    const pushName = msg.pushName;
 
     if (!remoteJid || !messageId) return;
 
@@ -1038,6 +1037,9 @@ export class WaService {
     if (remoteJid === 'status@broadcast') return;
 
     const isGroup = remoteJid.endsWith('@g.us');
+    const name = isGroup
+      ? msg.message?.groupInviteMessage?.groupName ?? null
+      : msg.pushName ?? null;
 
     const conversationJid = remoteJid;
 
@@ -1070,7 +1072,7 @@ export class WaService {
       sessionId,
       jid: remoteJid,
       text,
-      name: pushName,
+      name,
       messageType,
       messageId,
       fromMe,
