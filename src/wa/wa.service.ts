@@ -19,6 +19,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import axios from 'axios';
 import { run } from 'googleapis/build/src/apis/run';
+import { WaGateway } from './wa.gateway';
 
 type SessionRuntime = {
   qr?: string;
@@ -76,7 +77,10 @@ export class WaService {
   private readonly logger = new Logger('WaService');
   private sessions = new Map<string, SessionRuntime>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private gateway: WaGateway,
+  ) {}
 
   /** absolute dir where Baileys stores auth for this session */
   private sessionPath(sessionId: string): string {
@@ -371,46 +375,49 @@ export class WaService {
     return { count: groups.length, groups };
   }
 
-  /** Logout & keep auth files (or delete to force re-scan) */
+  /** Logout & delete auth folder (force QR re-scan) */
   async logout(sessionId: string) {
     const rt = this.sessions.get(sessionId);
+    const authDir = this.sessionPath(sessionId);
 
     try {
       if (rt?.sock) {
         await rt.sock.logout();
-        // Clean up the runtime
         rt.sock = undefined;
         rt.ready = false;
         rt.qr = undefined;
       }
     } catch (error: any) {
       this.logger.warn(
-        `Error during socket logout for session ${sessionId}:`,
-        error.message,
-      );
-      // Continue even if logout fails - still update DB
-    }
-
-    try {
-      await this.prisma.whatsAppSession.updateMany({
-        where: { id: sessionId },
-        data: { connected: false },
-      });
-    } catch (error: any) {
-      this.logger.error(
-        `Error updating session ${sessionId} in database:`,
-        error.message,
-      );
-      throw new NotFoundException(
-        `Failed to update session status: ${error.message}`,
+        `Error during socket logout for session ${sessionId}: ${error.message}`,
       );
     }
 
-    // Remove from runtime map
+    // Remove runtime first
     this.sessions.delete(sessionId);
 
-    this.logger.log(`Session ${sessionId} logged out successfully`);
-    return { success: true };
+    // Update DB
+    await this.prisma.whatsAppSession.updateMany({
+      where: { id: sessionId },
+      data: { connected: false },
+    });
+
+    // 🔥 Delete auth folder (important)
+    try {
+      await fs.promises.rm(authDir, {
+        recursive: true,
+        force: true,
+      });
+      this.logger.log(`Auth folder deleted for ${sessionId}`);
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to delete auth folder ${sessionId}: ${err.message}`,
+      );
+    }
+
+    this.logger.log(`Session ${sessionId} fully logged out`);
+
+    return { success: true, requireQr: true };
   }
 
   async broadcastText(ownerId: string, dto: BroadcastTextInput) {
@@ -1032,33 +1039,30 @@ export class WaService {
     const fromMe = msg.key?.fromMe;
 
     if (!remoteJid || !messageId) return;
-
-    // ignore status broadcast
     if (remoteJid === 'status@broadcast') return;
 
     const isGroup = remoteJid.endsWith('@g.us');
-    const name = isGroup
-      ? msg.message?.groupInviteMessage?.groupName ?? null
-      : msg.pushName ?? null;
 
-    const conversationJid = remoteJid;
+    const name = !isGroup ? (msg.pushName ?? null) : null;
 
-    // Extract message text safely
+    const messageContent = msg.message;
+    const messageType = messageContent
+      ? Object.keys(messageContent)[0]
+      : 'unknown';
+
     const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      msg.message.imageMessage?.caption ||
-      msg.message.videoMessage?.caption ||
+      messageContent?.conversation ||
+      messageContent?.extendedTextMessage?.text ||
+      messageContent?.imageMessage?.caption ||
+      messageContent?.videoMessage?.caption ||
       null;
-
-    const messageType = Object.keys(msg.message)[0] || 'unknown';
 
     await this.prisma.whatsAppMessage.upsert({
       where: { messageId },
       update: {},
       create: {
         sessionId,
-        phone: conversationJid,
+        phone: remoteJid,
         direction: fromMe ? 'OUTGOING' : 'INCOMING',
         messageId,
         text,
@@ -1078,8 +1082,24 @@ export class WaService {
       fromMe,
     });
 
+    this.gateway.server.to(sessionId).emit('new-message', {
+      id: messageId,
+      sessionId,
+      jid: remoteJid,
+      name,
+      text,
+      type: messageType,
+      fromMe,
+      createdAt: new Date(),
+    });
+
+    this.gateway.server.to(sessionId).emit('conversation-updated', {
+      sessionId,
+      jid: remoteJid,
+    });
+
     this.logger.log(
-      `Saved ${messageType} (${fromMe ? 'OUT' : 'IN'}) in ${conversationJid}`,
+      `Saved ${messageType} (${fromMe ? 'OUT' : 'IN'}) in ${remoteJid}`,
     );
   }
 
