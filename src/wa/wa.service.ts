@@ -265,11 +265,14 @@ export class WaService {
     return { sessionId, qr: rt.qr ?? null, connected: rt.ready };
   }
 
-  /** Send text message */
-  async sendText(sessionId: string, toPhoneE164: string, text: string) {
+  /** Send text message — accepts phone number OR full JID (e.g. xxx@lid, xxx@s.whatsapp.net) */
+  async sendText(sessionId: string, toPhoneOrJid: string, text: string) {
     const rt = await this.ensureConnected(sessionId);
 
-    const jid = this.phoneToJid(toPhoneE164);
+    // If already a full JID (contains @), use as-is; otherwise convert phone→JID
+    const jid = toPhoneOrJid.includes('@')
+      ? toPhoneOrJid
+      : this.phoneToJid(toPhoneOrJid);
     const res = await rt.sock.sendMessage(jid, { text });
 
     // Narrowing & fallback for strict TS
@@ -279,6 +282,21 @@ export class WaService {
     }
 
     if (messageId) {
+      // Save outgoing message to DB immediately (don't wait for Baileys echo)
+      await this.prisma.whatsAppMessage.upsert({
+        where: { messageId },
+        update: {},
+        create: {
+          sessionId,
+          phone: jid,
+          direction: 'OUTGOING',
+          messageId,
+          text,
+          type: 'conversation',
+          status: 'SENT',
+        },
+      });
+
       await this.upsertConversation({
         sessionId,
         jid,
@@ -286,6 +304,22 @@ export class WaService {
         messageType: 'conversation',
         messageId,
         fromMe: true,
+      });
+
+      // Emit websocket events so FE updates in real-time
+      this.gateway.server.to(sessionId).emit('new-message', {
+        id: messageId,
+        sessionId,
+        jid,
+        text,
+        type: 'conversation',
+        fromMe: true,
+        createdAt: new Date(),
+      });
+
+      this.gateway.server.to(sessionId).emit('conversation-updated', {
+        sessionId,
+        jid,
       });
     }
 
@@ -873,28 +907,110 @@ export class WaService {
 
   public async listConversations(params: { sessionId: string }) {
     const { sessionId } = params;
-    return this.prisma.whatsAppConversation.findMany({
-      where: {
-        sessionId,
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
+
+    // Fetch all conversations for this session
+    const conversations = await this.prisma.whatsAppConversation.findMany({
+      where: { sessionId },
+      orderBy: { updatedAt: 'desc' },
     });
+
+    // Group conversations by the NUMERIC PREFIX of the JID.
+    // e.g. 210870160343103@s.whatsapp.net and 210870160343103@lid
+    // share the same prefix → same contact.
+    const grouped = new Map<string, typeof conversations>();
+
+    for (const conv of conversations) {
+      let groupKey: string;
+
+      if (conv.isGroup) {
+        // Groups are never merged
+        groupKey = `group:${conv.jid}`;
+      } else {
+        // Extract the numeric part before '@'
+        const prefix = conv.jid.split('@')[0].replace(/\D/g, '');
+        groupKey = prefix ? `id:${prefix}` : `jid:${conv.jid}`;
+      }
+
+      const existing = grouped.get(groupKey);
+      if (existing) {
+        existing.push(conv);
+      } else {
+        grouped.set(groupKey, [conv]);
+      }
+    }
+
+    // Merge grouped conversations
+    const merged = Array.from(grouped.values()).map((group) => {
+      if (group.length === 1) {
+        return {
+          ...group[0],
+          alternativeJids: [group[0].jid],
+        };
+      }
+
+      // Sort by lastMessageAt descending to pick the most recent as primary
+      const sorted = group.sort((a, b) => {
+        const aTime = a.lastMessageAt
+          ? new Date(a.lastMessageAt).getTime()
+          : 0;
+        const bTime = b.lastMessageAt
+          ? new Date(b.lastMessageAt).getTime()
+          : 0;
+        return bTime - aTime;
+      });
+
+      const primary = sorted[0];
+      const allJids = group.map((c) => c.jid);
+      const totalUnread = group.reduce(
+        (sum, c) => sum + (c.unreadCount || 0),
+        0,
+      );
+
+      // Pick the best name from any conversation in the group
+      const bestName =
+        group.find((c) => c.name && c.name.trim())?.name ?? null;
+
+      return {
+        ...primary,
+        name: bestName,
+        unreadCount: totalUnread,
+        alternativeJids: allJids,
+      };
+    });
+
+    // Sort by lastMessageAt descending
+    merged.sort((a, b) => {
+      const aTime = a.lastMessageAt
+        ? new Date(a.lastMessageAt).getTime()
+        : 0;
+      const bTime = b.lastMessageAt
+        ? new Date(b.lastMessageAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
+
+    return merged;
   }
 
   public async getConversations(params: {
     sessionId: string;
-    jid: string;
+    jid: string; // supports comma-separated JIDs for merged conversations
     cursor?: string; // messageId cursor
     limit?: number;
   }) {
-    const { sessionId, jid, cursor, limit = 30 } = params;
+    const { sessionId, jid, cursor, limit = 50 } = params;
 
-    return this.prisma.whatsAppMessage.findMany({
+    // Support comma-separated JIDs so merged conversations show all messages
+    const jids = jid
+      .split(',')
+      .map((j) => j.trim())
+      .filter(Boolean);
+
+    // Fetch latest messages (desc to get newest), then reverse for chronological order
+    const messages = await this.prisma.whatsAppMessage.findMany({
       where: {
         sessionId,
-        phone: jid,
+        phone: jids.length > 1 ? { in: jids } : jids[0],
       },
       orderBy: {
         createdAt: 'desc',
@@ -905,12 +1021,23 @@ export class WaService {
         cursor: { id: cursor },
       }),
     });
+
+    // Reverse so FE gets oldest→newest (chronological) order
+    return messages.reverse();
   }
 
   public async markConversationAsRead(sessionId: string, jid: string) {
-    await this.prisma.whatsAppConversation.update({
+    // Support comma-separated JIDs for merged conversations
+    const jids = jid
+      .split(',')
+      .map((j) => j.trim())
+      .filter(Boolean);
+
+    // Mark all alternative JIDs as read
+    await this.prisma.whatsAppConversation.updateMany({
       where: {
-        sessionId_jid: { sessionId, jid },
+        sessionId,
+        jid: jids.length > 1 ? { in: jids } : jids[0],
       },
       data: {
         unreadCount: 0,
@@ -1013,7 +1140,8 @@ export class WaService {
     sessionId: string,
   ) {
     sock.ev.on('messages.upsert', async (m) => {
-      if (m.type !== 'notify') return;
+      // Handle both 'notify' (real-time) and 'append' (sync/echo) types
+      if (m.type !== 'notify' && m.type !== 'append') return;
 
       for (const msg of m.messages ?? []) {
         try {
@@ -1043,7 +1171,9 @@ export class WaService {
 
     const isGroup = remoteJid.endsWith('@g.us');
 
-    const name = !isGroup ? (msg.pushName ?? null) : null;
+    // Only use pushName for INCOMING messages to get the contact's name
+    // When fromMe is true, pushName would be our own name — skip it
+    const name = !isGroup && !fromMe ? (msg.pushName ?? null) : null;
 
     const messageContent = msg.message;
     const messageType = messageContent

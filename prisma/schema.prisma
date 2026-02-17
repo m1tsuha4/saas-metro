@@ -29,6 +29,7 @@ model User {
   whatsAppContacts   WhatsAppContact[]
   subscriptions      Subscription[]
   payments           Payment[]
+  aiAgents           AiAgent[]
 
   @@map("user")
 }
@@ -76,14 +77,15 @@ enum UserRole {
 }
 
 model WhatsAppSession {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   label     String?
   ownerId   String?
   statePath String
   meJid     String? // e.g., 628xxx@s.whatsapp.net
-  connected Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  connected Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  aiAgents  AiAgent[]
 
   @@map("whatsappsession")
 }
@@ -119,7 +121,7 @@ model WaCampaign {
 }
 
 model WhatsAppMessage {
-  id           String   @id @default(cuid())
+  id           String      @id @default(cuid())
   contactId    String?
   phone        String
   sessionId    String
@@ -129,12 +131,12 @@ model WhatsAppMessage {
   mediaUrl     String?
   status       String // SENT | FAILED
   errorMessage String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  messageId    String?  @unique
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  messageId    String?     @unique
   type         String?
   rawJson      Json?
-  campaign WaCampaign? @relation(fields: [campaignId], references: [id])
+  campaign     WaCampaign? @relation(fields: [campaignId], references: [id])
 
   @@map("whatsappmessage")
 }
@@ -290,19 +292,19 @@ model GmailMessage {
 }
 
 model WhatsAppConversation {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   sessionId       String
-  jid             String   // conversation identifier (remoteJid)
-  name            String?  // optional display name
-  isGroup         Boolean  @default(false)
+  jid             String // conversation identifier (remoteJid)
+  name            String? // optional display name
+  isGroup         Boolean   @default(false)
   lastMessageId   String?
   lastMessageText String?
   lastMessageType String?
   lastMessageAt   DateTime?
-  unreadCount     Int      @default(0)
+  unreadCount     Int       @default(0)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sessionId, jid])
   @@index([sessionId])
@@ -311,34 +313,88 @@ model WhatsAppConversation {
 }
 
 model AiAgent {
-  id            String   @id @default(cuid())
-  ownerId       String
-  sessionId     String   // connect to whatsAppSession
-  name          String
-  isEnabled     Boolean  @default(false)
-  mode          String   @default("BOT") // BOT | HUMAN
-  model         String   @default("gpt-4o-mini")
-  temperature   Float    @default(0.7)
-  systemPrompt  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String                 @id @default(cuid())
+  ownerId        String
+  sessionId      String // connect to whatsAppSession
+  name           String
+  isEnabled      Boolean                @default(false)
+  mode           AiMode                 @default(BOT)
+  model          String                 @default("gpt-4o-mini")
+  temperature    Float                  @default(0.7)
+  maxTokens      Int                    @default(500)
+  systemPrompt   String?                @db.Text
+  fallbackReply  String?                @db.Text
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  owner          User                   @relation(fields: [ownerId], references: [id])
+  session        WhatsAppSession        @relation(fields: [sessionId], references: [id])
+  knowledgeFiles AiKnowledgeFile[]
+  embeddings     AiEmbedding[]
+  memories       AiConversationMemory[]
+  usageLogs      AiUsageLog[]
+}
+
+enum AiMode {
+  BOT
+  HUMAN
 }
 
 model AiKnowledgeFile {
-  id        String   @id @default(cuid())
-  agentId   String
-  fileName  String
-  fileUrl   String
-  status    String   @default("PROCESSING") // PROCESSING | READY | FAILED
+  id      String @id @default(cuid())
+  agentId String
+
+  fileName String
+  fileUrl  String
+  fileSize Int?
+
+  status FileStatus @default(PROCESSING)
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent AiAgent @relation(fields: [agentId], references: [id])
+}
+
+enum FileStatus {
+  PROCESSING
+  READY
+  FAILED
 }
 
 model AiEmbedding {
-  id         String   @id @default(cuid())
-  agentId    String
-  content    String
-  embedding  Json     // store vector
-  createdAt  DateTime @default(now())
+  id      String @id @default(cuid())
+  agentId String
+
+  content   String @db.Text
+  embedding Json // store vector array
+
+  createdAt DateTime @default(now())
+
+  agent AiAgent @relation(fields: [agentId], references: [id])
+
+  @@index([agentId])
 }
 
+model AiConversationMemory {
+  id        String   @id @default(cuid())
+  agentId   String
+  jid       String
+  role      String // "user" | "assistant"
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  agent     AiAgent  @relation(fields: [agentId], references: [id])
 
+  @@index([agentId, jid])
+}
+
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  agentId          String
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  createdAt        DateTime @default(now())
+  agent            AiAgent  @relation(fields: [agentId], references: [id])
+
+  @@index([agentId])
+}
