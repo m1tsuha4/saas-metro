@@ -18,8 +18,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import axios from 'axios';
-import { run } from 'googleapis/build/src/apis/run';
+import { downloadContentFromMessage } from '@whiskeysockets/baileys';
 import { WaGateway } from './wa.gateway';
+import { CloudinaryService } from 'src/common/services/cloudinary.service';
 
 type SessionRuntime = {
   qr?: string;
@@ -80,6 +81,7 @@ export class WaService {
   constructor(
     private prisma: PrismaService,
     private gateway: WaGateway,
+    private cloudinary: CloudinaryService,
   ) {}
 
   /** absolute dir where Baileys stores auth for this session */
@@ -950,12 +952,8 @@ export class WaService {
 
       // Sort by lastMessageAt descending to pick the most recent as primary
       const sorted = group.sort((a, b) => {
-        const aTime = a.lastMessageAt
-          ? new Date(a.lastMessageAt).getTime()
-          : 0;
-        const bTime = b.lastMessageAt
-          ? new Date(b.lastMessageAt).getTime()
-          : 0;
+        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
         return bTime - aTime;
       });
 
@@ -967,8 +965,7 @@ export class WaService {
       );
 
       // Pick the best name from any conversation in the group
-      const bestName =
-        group.find((c) => c.name && c.name.trim())?.name ?? null;
+      const bestName = group.find((c) => c.name && c.name.trim())?.name ?? null;
 
       return {
         ...primary,
@@ -980,12 +977,8 @@ export class WaService {
 
     // Sort by lastMessageAt descending
     merged.sort((a, b) => {
-      const aTime = a.lastMessageAt
-        ? new Date(a.lastMessageAt).getTime()
-        : 0;
-      const bTime = b.lastMessageAt
-        ? new Date(b.lastMessageAt).getTime()
-        : 0;
+      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       return bTime - aTime;
     });
 
@@ -1179,6 +1172,29 @@ export class WaService {
     const messageType = messageContent
       ? Object.keys(messageContent)[0]
       : 'unknown';
+    let mediaUrl: string | null = null;
+
+    if (messageContent?.imageMessage) {
+      const stream = await downloadContentFromMessage(
+        messageContent.imageMessage,
+        'image',
+      );
+
+      const chunk: Buffer[] = [];
+
+      for await (const chunk of stream) {
+        chunk.push(chunk);
+      }
+
+      const buffer = Buffer.concat(chunk);
+
+      const uploadResult: any = await this.cloudinary.uploadBuffer(
+        buffer,
+        'whatsapp-image',
+      );
+
+      mediaUrl = uploadResult.secure_url;
+    }
 
     const text =
       messageContent?.conversation ||
@@ -1197,6 +1213,7 @@ export class WaService {
         messageId,
         text,
         type: messageType,
+        mediaUrl,
         rawJson: msg,
         status: fromMe ? 'SENT' : 'RECEIVED',
       },
@@ -1218,6 +1235,7 @@ export class WaService {
       jid: remoteJid,
       name,
       text,
+      mediaUrl,
       type: messageType,
       fromMe,
       createdAt: new Date(),

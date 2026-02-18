@@ -15,6 +15,7 @@ import { ContactsModule } from './contacts/contacts.module';
 import { AdminModule } from './admin/admin.module';
 import { PaymentModule } from './payment/payment.module';
 import { AiModule } from './ai/ai.module';
+import { CloudinaryService } from './common/services/cloudinary.service';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { AiModule } from './ai/ai.module';
     AiModule,
   ],
   controllers: [AppController],
-  providers: [AppService, WinstonLoggerService],
+  providers: [AppService, WinstonLoggerService, CloudinaryService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
