@@ -315,7 +315,7 @@ model WhatsAppConversation {
 model AiAgent {
   id             String                 @id @default(cuid())
   ownerId        String
-  sessionId      String // connect to whatsAppSession
+  sessionId      String                 @unique
   name           String
   isEnabled      Boolean                @default(false)
   mode           AiMode                 @default(BOT)

@@ -21,6 +21,7 @@ import axios from 'axios';
 import { downloadContentFromMessage } from '@whiskeysockets/baileys';
 import { WaGateway } from './wa.gateway';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
+import { AiService } from 'src/ai/ai.service';
 
 type SessionRuntime = {
   qr?: string;
@@ -82,6 +83,7 @@ export class WaService {
     private prisma: PrismaService,
     private gateway: WaGateway,
     private cloudinary: CloudinaryService,
+    private aiService: AiService,
   ) {}
 
   /** absolute dir where Baileys stores auth for this session */
@@ -1180,13 +1182,13 @@ export class WaService {
         'image',
       );
 
-      const chunk: Buffer[] = [];
+      const chunks: Buffer[] = [];
 
       for await (const chunk of stream) {
-        chunk.push(chunk);
+        chunks.push(chunk);
       }
 
-      const buffer = Buffer.concat(chunk);
+      const buffer = Buffer.concat(chunks);
 
       const uploadResult: any = await this.cloudinary.uploadBuffer(
         buffer,
@@ -1228,6 +1230,23 @@ export class WaService {
       messageId,
       fromMe,
     });
+
+    // AI AUTO REPLY
+    if (!fromMe && !isGroup && text) {
+      const aiReply = await this.aiService.handleIncomingMessage({
+        sessionId,
+        jid: remoteJid,
+        message: text,
+        fromMe,
+        isGroup,
+      });
+      console.log({ aiReply });
+      if (aiReply) {
+        await sock.sendMessage(remoteJid, {
+          text: aiReply,
+        });
+      }
+    }
 
     this.gateway.server.to(sessionId).emit('new-message', {
       id: messageId,

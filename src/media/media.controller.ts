@@ -12,9 +12,9 @@ import { CloudinaryService } from 'src/common/services/cloudinary.service';
 export class MediaController {
   constructor(private cloudinary: CloudinaryService) {}
 
+  @Post('upload')
   @ApiConsumes('multipart/form-data')
   @ApiBody({
-    type: 'multipart/form-data',
     schema: {
       type: 'object',
       properties: {
@@ -25,7 +25,6 @@ export class MediaController {
       },
     },
   })
-  @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async upload(@UploadedFile() file: Express.Multer.File) {
     const result: any = await this.cloudinary.uploadBuffer(
