@@ -16,6 +16,7 @@ import { AdminModule } from './admin/admin.module';
 import { PaymentModule } from './payment/payment.module';
 import { AiModule } from './ai/ai.module';
 import { CloudinaryService } from './common/services/cloudinary.service';
+import { MediaController } from './media/media.controller';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { CloudinaryService } from './common/services/cloudinary.service';
     PaymentModule,
     AiModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, MediaController],
   providers: [AppService, WinstonLoggerService, CloudinaryService],
 })
 export class AppModule implements NestModule {
