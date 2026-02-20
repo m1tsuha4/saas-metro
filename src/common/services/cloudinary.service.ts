@@ -27,4 +27,29 @@ export class CloudinaryService {
       stream.end(buffer);
     });
   }
+
+  async uploadPdf(
+    buffer: Buffer,
+    fileName: string,
+  ): Promise<{ secure_url: string }> {
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: 'raw',
+          folder: 'ai-knowledge',
+          public_id: fileName,
+          type: 'upload',
+          access_mode: 'public',
+          use_filename: true,
+          unique_filename: true,
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result as any);
+        },
+      );
+
+      stream.end(buffer);
+    });
+  }
 }

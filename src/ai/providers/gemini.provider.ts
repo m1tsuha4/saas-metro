@@ -33,15 +33,26 @@ export class GeminiProvider implements AiProvider {
       model: 'gemini-2.5-flash',
     });
 
-    const prompt = `
-${params.systemPrompt || 'You are a helpful assistant.'}
-
-User: ${params.userMessage}
-`;
+    const prompt = `${params.systemPrompt || 'You are a helpful assistant.'} User: ${params.userMessage}`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
     return response.text();
+  }
+
+  async generateEmbedding(text: string): Promise<number[]> {
+    const model = this.genAI.getGenerativeModel({
+      model: 'text-embedding-004',
+    });
+
+    const result = await model.embedContent({
+      content: {
+        role: 'user',
+        parts: [{ text }],
+      },
+    });
+
+    return result.embedding.values;
   }
 }

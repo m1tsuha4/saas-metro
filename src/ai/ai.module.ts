@@ -7,6 +7,8 @@ import { OpenAiProvider } from './providers/openai.provider';
 import { MockAiProvider } from './providers/mock-ai.provider';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { GeminiProvider } from './providers/gemini.provider';
+import { AiKnowledgeService } from './ai-knowledge.service';
+import { CloudinaryService } from 'src/common/services/cloudinary.service';
 
 @Module({
   imports: [PrismaModule],
@@ -15,6 +17,8 @@ import { GeminiProvider } from './providers/gemini.provider';
     AiService,
     AiResponseService,
     AiAgentService,
+    AiKnowledgeService,
+    CloudinaryService,
     {
       provide: 'AI_PROVIDER',
       useFactory: () => {

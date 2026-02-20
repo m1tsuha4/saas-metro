@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AiResponseService } from './ai-response.service';
 import { agent } from 'supertest';
@@ -41,5 +41,33 @@ export class AiService {
       maxTokens: agent.maxTokens,
       model: agent.model,
     });
+  }
+
+  async uploadKnowledge(
+    agentId: string,
+    fileName: string,
+    fileUrl: string,
+    status: 'PROCESSING' | 'READY' | 'FAILED',
+  ) {
+    const agent = await this.prisma.aiAgent.findUnique({
+      where: {
+        id: agentId,
+      },
+    });
+
+    if (!agent) {
+      throw new BadRequestException('Agent not found');
+    }
+
+    const fileRecord = await this.prisma.aiKnowledgeFile.create({
+      data: {
+        agentId,
+        fileName,
+        fileUrl,
+        status,
+      },
+    });
+
+    return fileRecord;
   }
 }
