@@ -17,15 +17,18 @@ export const useDbAuthState = async (
     where: { id: sessionId },
   });
 
-  type StoredSession = {
-    creds: any;
-    keys: any;
-  };
+  let creds = initAuthCreds()
+  let keys: any = {}
 
-  const stored = existing?.data as StoredSession | undefined;
+  if (existing?.data) {
+    const restored = JSON.parse(
+      JSON.stringify(existing.data),
+      BufferJSON.reviver
+    )
 
-  let creds = stored?.creds || initAuthCreds();
-  let keys = stored?.keys || {};
+    creds = restored.creds
+    keys = restored.keys || {}
+  }
 
   const state: AuthenticationState = {
     creds,

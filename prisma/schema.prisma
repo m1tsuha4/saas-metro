@@ -332,6 +332,8 @@ model AiAgent {
   embeddings     AiEmbedding[]
   memories       AiConversationMemory[]
   usageLogs      AiUsageLog[]
+
+  @@map("aiagent")
 }
 
 enum AiMode {
@@ -353,6 +355,8 @@ model AiKnowledgeFile {
   updatedAt DateTime @updatedAt
 
   agent AiAgent @relation(fields: [agentId], references: [id])
+
+  @@map("aiknowledgefile")
 }
 
 enum FileStatus {
@@ -373,6 +377,7 @@ model AiEmbedding {
   agent AiAgent @relation(fields: [agentId], references: [id])
 
   @@index([agentId])
+  @@map("aiembedding")
 }
 
 model AiConversationMemory {
@@ -385,6 +390,7 @@ model AiConversationMemory {
   agent     AiAgent  @relation(fields: [agentId], references: [id])
 
   @@index([agentId, jid])
+  @@map("aiconversationmemory")
 }
 
 model AiUsageLog {
@@ -397,10 +403,13 @@ model AiUsageLog {
   agent            AiAgent  @relation(fields: [agentId], references: [id])
 
   @@index([agentId])
+  @@map("aiusagelog")
 }
 
 model WaSession {
   id  String @id 
   data Json
   updatedAt DateTime @updatedAt
+
+  @@map("wasession")
 }
