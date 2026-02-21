@@ -30,6 +30,7 @@ export class AiController {
         sessionId: { example: 'cmlha0mid0000mezwjmb13x6j' },
         ownerId: { example: 'cmlha0mid0000mezwjmb13x6j' },
         name: { example: 'mitsuha' },
+        isEnabled: { example: true },
       },
     },
   })
@@ -38,8 +39,9 @@ export class AiController {
     @Body('sessionId') sessionId: string,
     @Body('ownerId') ownerId: string,
     @Body('name') name: string,
+    @Body('isEnabled') isEnabled: boolean,
   ) {
-    return this.aiAgentService.createAgent(sessionId, ownerId, name);
+    return this.aiAgentService.createAgent(sessionId, ownerId, name, isEnabled);
   }
 
   @ApiBody({

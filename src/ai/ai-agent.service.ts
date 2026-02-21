@@ -5,13 +5,13 @@ import { PrismaService } from 'src/prisma/prisma.service';
 export class AiAgentService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createAgent(sessionId: string, ownerId: string, name: string) {
+  async createAgent(sessionId: string, ownerId: string, name: string, isEnabled: boolean) {
     const agent = await this.prisma.aiAgent.create({
       data: {
         sessionId,
         ownerId,
         name,
-        isEnabled: false,
+        isEnabled,
         mode: 'BOT',
         temperature: 0.7,
         maxTokens: 100,
