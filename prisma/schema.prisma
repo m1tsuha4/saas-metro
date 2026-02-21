@@ -80,7 +80,7 @@ model WhatsAppSession {
   id        String    @id @default(cuid())
   label     String?
   ownerId   String?
-  statePath String
+  statePath String?
   meJid     String? // e.g., 628xxx@s.whatsapp.net
   connected Boolean   @default(false)
   createdAt DateTime  @default(now())
@@ -397,4 +397,10 @@ model AiUsageLog {
   agent            AiAgent  @relation(fields: [agentId], references: [id])
 
   @@index([agentId])
+}
+
+model WaSession {
+  id  String @id 
+  data Json
+  updatedAt DateTime @updatedAt
 }

@@ -1,12 +1,9 @@
 import makeWASocket, {
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   type GroupMetadata,
 } from '@whiskeysockets/baileys';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as qrcode from 'qrcode';
 import pino from 'pino';
 import {
@@ -22,6 +19,7 @@ import { downloadContentFromMessage } from '@whiskeysockets/baileys';
 import { WaGateway } from './wa.gateway';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
 import { AiService } from 'src/ai/ai.service';
+import { useDbAuthState } from './baileys-db-auth';
 
 type SessionRuntime = {
   qr?: string;
@@ -85,13 +83,6 @@ export class WaService {
     private cloudinary: CloudinaryService,
     private aiService: AiService,
   ) {}
-
-  /** absolute dir where Baileys stores auth for this session */
-  private sessionPath(sessionId: string): string {
-    const base = process.env.WA_AUTH_DIR || path.join(process.cwd(), 'wa-auth');
-    return path.join(base, sessionId);
-  }
-
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
     // Singleton guard
@@ -113,10 +104,7 @@ export class WaService {
     this.sessions.set(sessionId, runtime);
 
     // Prepare auth
-    const authDir = this.sessionPath(sessionId);
-    fs.mkdirSync(authDir, { recursive: true });
-
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const { state, saveCreds } = await useDbAuthState(sessionId, this.prisma);
     const { version } = await fetchLatestBaileysVersion();
 
     // Create socket
@@ -173,7 +161,6 @@ export class WaService {
               id: sessionId,
               label,
               ownerId,
-              statePath: authDir,
               meJid: me,
               connected: true,
             },
@@ -413,47 +400,27 @@ export class WaService {
     return { count: groups.length, groups };
   }
 
-  /** Logout & delete auth folder (force QR re-scan) */
+  /** Logout */
   async logout(sessionId: string) {
     const rt = this.sessions.get(sessionId);
-    const authDir = this.sessionPath(sessionId);
 
     try {
       if (rt?.sock) {
         await rt.sock.logout();
-        rt.sock = undefined;
-        rt.ready = false;
-        rt.qr = undefined;
       }
-    } catch (error: any) {
-      this.logger.warn(
-        `Error during socket logout for session ${sessionId}: ${error.message}`,
-      );
-    }
+    } catch {}
 
-    // Remove runtime first
     this.sessions.delete(sessionId);
 
-    // Update DB
+    // delete session from DB
+    await this.prisma.waSession.deleteMany({
+      where: { id: sessionId },
+    });
+
     await this.prisma.whatsAppSession.updateMany({
       where: { id: sessionId },
       data: { connected: false },
     });
-
-    // 🔥 Delete auth folder (important)
-    try {
-      await fs.promises.rm(authDir, {
-        recursive: true,
-        force: true,
-      });
-      this.logger.log(`Auth folder deleted for ${sessionId}`);
-    } catch (err: any) {
-      this.logger.warn(
-        `Failed to delete auth folder ${sessionId}: ${err.message}`,
-      );
-    }
-
-    this.logger.log(`Session ${sessionId} fully logged out`);
 
     return { success: true, requireQr: true };
   }
