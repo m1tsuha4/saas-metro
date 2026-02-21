@@ -15,7 +15,7 @@ export class AiKnowledgeService {
   async processPdfBuffer(agentId: string, fileId: string, buffer: Buffer) {
     try {
       // Extract text
-     const text = await this.extractTextFromPdf(buffer);
+      const text = await this.extractTextFromPdf(buffer);
 
       const chunks = this.chunkText(text);
 
@@ -70,16 +70,14 @@ export class AiKnowledgeService {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
 
-      const pageText = content.items
-        .map((item: any) => item.str)
-        .join(' ');
+      const pageText = content.items.map((item: any) => item.str).join(' ');
 
       fullText += pageText + '\n';
     }
 
     return fullText;
   }
-  
+
   private chunkText(text: string, size = 800): string[] {
     const chunks: string[] = [];
     for (let i = 0; i < text.length; i += size) {
