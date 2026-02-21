@@ -8,7 +8,7 @@ export class GeminiProvider implements AiProvider {
 
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    this.testConnection();
+    // this.testConnection();
   }
 
   async testConnection() {
