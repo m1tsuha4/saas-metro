@@ -12,6 +12,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import axios from 'axios';
@@ -73,7 +74,7 @@ function countStatuses(items: { status: string }[]) {
 }
 
 @Injectable()
-export class WaService {
+export class WaService implements OnModuleInit {
   private readonly logger = new Logger('WaService');
   private sessions = new Map<string, SessionRuntime>();
 
@@ -83,6 +84,31 @@ export class WaService {
     private cloudinary: CloudinaryService,
     private aiService: AiService,
   ) {}
+  async onModuleInit() {
+    this.logger.log('Auto-reconnecting WhatsApp sessions...');
+
+    const sessions = await this.prisma.whatsAppSession.findMany({
+      where: { connected: true },
+    });
+
+    for (const s of sessions) {
+      if (!s.ownerId) {
+        this.logger.warn(
+          `Skipping session ${s.id} because ownerId is null`,
+        );
+        continue;
+      }
+
+      try {
+        await this.connect(s.id, s.ownerId, s.label ?? undefined);
+        this.logger.log(`Auto-reconnected session ${s.id}`);
+      } catch (err: any) {
+        this.logger.error(
+          `Failed to auto-reconnect ${s.id}: ${err.message}`,
+        );
+      }
+    }
+  }
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
     // Singleton guard
