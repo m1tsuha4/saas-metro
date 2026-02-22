@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   Patch,
   Post,
@@ -22,6 +23,11 @@ export class AiController {
     private readonly cloudinaryService: CloudinaryService,
     private readonly aiKnowledgeService: AiKnowledgeService,
   ) {}
+
+  @Get(':sessionId')
+  async getAgent(@Param('sessionId') sessionId: string) {
+    return this.aiAgentService.getAgent(sessionId);
+  }
 
   @ApiBody({
     schema: {
