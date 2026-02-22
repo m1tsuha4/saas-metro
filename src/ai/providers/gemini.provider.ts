@@ -43,7 +43,7 @@ export class GeminiProvider implements AiProvider {
 
   async generateEmbedding(text: string): Promise<number[]> {
     const model = this.genAI.getGenerativeModel({
-      model: 'text-embedding-004',
+      model: 'gemini-embedding-001',
     });
 
     const result = await model.embedContent({
