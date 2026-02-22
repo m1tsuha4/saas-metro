@@ -12,8 +12,13 @@ export class AiAgentService {
 
     return agent;
   }
-  
-  async createAgent(sessionId: string, ownerId: string, name: string, isEnabled: boolean) {
+
+  async createAgent(
+    sessionId: string,
+    ownerId: string,
+    name: string,
+    isEnabled: boolean,
+  ) {
     const agent = await this.prisma.aiAgent.create({
       data: {
         sessionId,

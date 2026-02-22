@@ -93,9 +93,7 @@ export class WaService implements OnModuleInit {
 
     for (const s of sessions) {
       if (!s.ownerId) {
-        this.logger.warn(
-          `Skipping session ${s.id} because ownerId is null`,
-        );
+        this.logger.warn(`Skipping session ${s.id} because ownerId is null`);
         continue;
       }
 
@@ -103,9 +101,7 @@ export class WaService implements OnModuleInit {
         await this.connect(s.id, s.ownerId, s.label ?? undefined);
         this.logger.log(`Auto-reconnected session ${s.id}`);
       } catch (err: any) {
-        this.logger.error(
-          `Failed to auto-reconnect ${s.id}: ${err.message}`,
-        );
+        this.logger.error(`Failed to auto-reconnect ${s.id}: ${err.message}`);
       }
     }
   }

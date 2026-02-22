@@ -56,6 +56,32 @@ export class AiKnowledgeService {
     });
   }
 
+  async searchSimilarChunks(
+    agentId: string,
+    queryEmbedding: number[],
+    limit = 5,
+  ) {
+    const embeddings = await this.prisma.aiEmbedding.findMany({
+      where: { agentId },
+    });
+
+    const scored = embeddings.map((item) => ({
+      content: item.content,
+      score: this.cosineSimilarity(queryEmbedding, item.embedding as number[]),
+    }));
+
+    scored.sort((a, b) => b.score - a.score);
+
+    return scored.slice(0, limit);
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    return dot / (normA * normB);
+  }
+
   private async extractTextFromPdf(buffer: Buffer): Promise<string> {
     const uint8Array = new Uint8Array(buffer);
 

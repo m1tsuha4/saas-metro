@@ -6,7 +6,15 @@ export class MockAiProvider implements AiProvider {
   async generateReply(params: {
     systemPrompt?: string | null;
     userMessage: string;
+    temperature?: number;
+    maxTokens?: number;
+    model?: string;
   }): Promise<string> {
-    return `[MOCK AI]\nYou said: "${params.userMessage}"`;
+    return `MOCK REPLY: ${params.userMessage}`;
+  }
+
+  async generateEmbedding(text: string): Promise<number[]> {
+    // Return random vector (dimension 768 for example)
+    return Array.from({ length: 768 }, () => Math.random());
   }
 }
