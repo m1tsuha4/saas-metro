@@ -11,7 +11,7 @@ export class AiKnowledgeService {
     @Inject('AI_PROVIDER')
     private aiProvider: AiProvider,
   ) {}
-  
+
   async getAIKnowledge(agentId: string) {
     return this.prisma.aiKnowledgeFile.findMany({
       where: { agentId },
@@ -79,6 +79,16 @@ export class AiKnowledgeService {
     scored.sort((a, b) => b.score - a.score);
 
     return scored.slice(0, limit);
+  }
+
+  async deleteKnowledge(agentId: string, fileId: string) {
+    await this.prisma.aiEmbedding.deleteMany({
+      where: { agentId },
+    });
+
+    await this.prisma.aiKnowledgeFile.delete({
+      where: { id: fileId },
+    });
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {

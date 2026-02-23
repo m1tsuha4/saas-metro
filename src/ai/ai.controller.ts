@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -114,5 +115,13 @@ export class AiController {
   @Get(':agentId/knowledge')
   async getKnowledge(@Param('agentId') agentId: string) {
     return this.aiKnowledgeService.getAIKnowledge(agentId);
+  }
+
+  @Delete(':agentId/knowledge/:fileId')
+  async deleteKnowledge(
+    @Param('agentId') agentId: string,
+    @Param('fileId') fileId: string,
+  ) {
+    return this.aiKnowledgeService.deleteKnowledge(agentId, fileId);
   }
 }
