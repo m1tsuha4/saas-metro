@@ -11,6 +11,12 @@ export class AiKnowledgeService {
     @Inject('AI_PROVIDER')
     private aiProvider: AiProvider,
   ) {}
+  
+  async getAIKnowledge(agentId: string) {
+    return this.prisma.aiKnowledgeFile.findMany({
+      where: { agentId },
+    });
+  }
 
   async processPdfBuffer(agentId: string, fileId: string, buffer: Buffer) {
     try {

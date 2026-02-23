@@ -110,4 +110,9 @@ export class AiController {
 
     return { success: true };
   }
+
+  @Get(':agentId/knowledge')
+  async getKnowledge(@Param('agentId') agentId: string) {
+    return this.aiKnowledgeService.getAIKnowledge(agentId);
+  }
 }
