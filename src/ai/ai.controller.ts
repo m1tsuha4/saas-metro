@@ -124,4 +124,40 @@ export class AiController {
   ) {
     return this.aiKnowledgeService.deleteKnowledge(agentId, fileId);
   }
+
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { example: 'CS Bot' },
+        isEnabled: { example: true },
+        model: { example: 'gpt-4o-mini' },
+        temperature: { example: 0.7 },
+        maxTokens: { example: 500 },
+        systemPrompt: { example: 'You are a helpful assistant.' },
+        fallbackReply: { example: 'Maaf, saya tidak bisa menjawab pertanyaan itu.' },
+      },
+    },
+  })
+  @Patch(':id')
+  async updateAgent(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      isEnabled?: boolean;
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string | null;
+      fallbackReply?: string | null;
+    },
+  ) {
+    return this.aiAgentService.updateAgent(id, body);
+  }
+
+  @Patch(':id/toggle')
+  async toggleEnabled(@Param('id') id: string) {
+    return this.aiAgentService.toggleEnabled(id);
+  }
 }

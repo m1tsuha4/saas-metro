@@ -44,4 +44,37 @@ export class AiAgentService {
 
     return agent;
   }
+
+  async updateAgent(
+    id: string,
+    data: {
+      name?: string;
+      isEnabled?: boolean;
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string | null;
+      fallbackReply?: string | null;
+    },
+  ) {
+    const agent = await this.prisma.aiAgent.update({
+      where: { id },
+      data,
+      include: { knowledgeFiles: true },
+    });
+
+    return agent;
+  }
+
+  async toggleEnabled(id: string) {
+    const current = await this.prisma.aiAgent.findUnique({ where: { id } });
+    if (!current) throw new Error('Agent not found');
+
+    const agent = await this.prisma.aiAgent.update({
+      where: { id },
+      data: { isEnabled: !current.isEnabled },
+    });
+
+    return agent;
+  }
 }
