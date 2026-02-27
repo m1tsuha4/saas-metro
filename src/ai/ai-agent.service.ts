@@ -85,4 +85,10 @@ export class AiAgentService {
 
     return agent;
   }
+
+  async deleteAgent(id: string) {
+    return this.prisma.aiAgent.delete({
+      where: { id },
+    })
+  }
 }

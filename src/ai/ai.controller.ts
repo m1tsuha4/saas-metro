@@ -180,8 +180,16 @@ export class AiController {
     return this.aiAgentService.updateAgent(id, body);
   }
 
+  @Delete(':id')
+  async deleteAgent(
+    @Param('id') id: string,
+  ) {
+    return this.aiAgentService.deleteAgent(id);
+  }
+  
   @Patch(':id/toggle')
   async toggleEnabled(@Param('id') id: string) {
     return this.aiAgentService.toggleEnabled(id);
   }
+
 }
