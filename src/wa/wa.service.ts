@@ -439,9 +439,8 @@ export class WaService implements OnModuleInit {
       where: { id: sessionId },
     });
 
-    await this.prisma.whatsAppSession.updateMany({
+    await this.prisma.whatsAppSession.deleteMany({
       where: { id: sessionId },
-      data: { connected: false },
     });
 
     return { success: true, requireQr: true };
