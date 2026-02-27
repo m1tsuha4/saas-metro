@@ -27,45 +27,140 @@ export class AiService {
     if (fromMe || isGroup) return null;
 
     const agent = await this.prisma.aiAgent.findUnique({
-      where: {
-        sessionId,
-      },
+      where: { sessionId },
     });
 
     if (!agent || !agent.isEnabled) return null;
-
     if (agent.mode === 'HUMAN') return null;
 
-    const queryEmbedding = await this.aiProvider.generateEmbedding(message);
+    // Detect Intent
+    const intentRaw = await this.aiProvider.generateReply({
+      systemPrompt: `
+Classify the user's intent into ONE of these categories:
+- GREETING
+- PRODUCT_QUESTION
+- PRICE_QUESTION
+- SMALL_TALK
+- OTHER
 
-    const matches = await this.aiKnowledgeService.searchSimilarChunks(
-      agent.id,
-      queryEmbedding,
-      5,
-    );
-
-    const context = matches.map((match) => match.content).join('\n\n');
-    console.log('RAG matches:', matches.length);
-
-    const finalPrompt = `
-      ${agent.systemPrompt || 'You are a helpful assistant.'}
-
-      Answer ONLY using the knowledge below.
-      If the answer is not in the knowledge, say you don't know.
-
-      Knowledge:
-      ${context}
-
-      User Question:
-      ${message}
-    `;
-    return this.aiProvider.generateReply({
-      systemPrompt: finalPrompt,
+Respond with only the category name.
+`,
       userMessage: message,
-      temperature: agent.temperature,
-      maxTokens: agent.maxTokens,
+      temperature: 0,
+      maxTokens: 10,
       model: agent.model,
     });
+
+    const intent = (intentRaw ?? 'OTHER').trim().toUpperCase();
+    console.log('Detected intent:', intent);
+
+    // Load Conversation Memory
+    const memories = await this.prisma.aiConversationMemory.findMany({
+      where: { agentId: agent.id, jid },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+    });
+
+    const historyText = memories
+      .reverse()
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n');
+
+    const languageInstruction =
+      agent.language === 'en'
+        ? 'Respond in English.'
+        : 'Respond in Indonesian.';
+
+    let reply = '';
+
+    //  GREETING
+    if (intent === 'GREETING') {
+      reply =
+        (await this.aiProvider.generateReply({
+          systemPrompt: `
+You are a friendly and professional sales assistant.
+${languageInstruction}
+Greet warmly and offer help.
+
+Conversation history:
+${historyText}
+`,
+          userMessage: message,
+          temperature: agent.temperature,
+          maxTokens: agent.maxTokens,
+          model: agent.model,
+        })) ??
+        agent.fallbackReply ??
+        'Maaf, saya belum bisa menjawab saat ini silkaan hubungi admin.';
+
+      await this.saveMemory(agent.id, jid, message, reply);
+      return reply;
+    }
+
+    // PRODUCT / PRICE → Use RAG
+    if (intent === 'PRODUCT_QUESTION' || intent === 'PRICE_QUESTION') {
+      const queryEmbedding = await this.aiProvider.generateEmbedding(message);
+
+      const matches = await this.aiKnowledgeService.searchSimilarChunks(
+        agent.id,
+        queryEmbedding,
+        5,
+      );
+
+      console.log('RAG matches:', matches.length);
+
+      const context = matches.map((m) => m.content).join('\n\n');
+
+      reply =
+        (await this.aiProvider.generateReply({
+          systemPrompt: `
+You are a professional sales assistant.
+${languageInstruction}
+
+Use the knowledge below to answer.
+Be friendly and persuasive.
+Offer next step (survey, booking, etc).
+
+Conversation history:
+${historyText}
+
+Knowledge:
+${context}
+`,
+          userMessage: message,
+          temperature: agent.temperature,
+          maxTokens: agent.maxTokens,
+          model: agent.model,
+        })) ??
+        agent.fallbackReply ??
+        'Maaf, saya belum bisa menjawab saat ini.';
+
+      await this.saveMemory(agent.id, jid, message, reply);
+      return reply;
+    }
+
+    // SMALL TALK
+    reply =
+      (await this.aiProvider.generateReply({
+        systemPrompt: `
+You are a conversational sales assistant.
+${languageInstruction}
+
+Be natural, helpful, and engaging.
+
+Conversation history:
+${historyText}
+`,
+        userMessage: message,
+        temperature: agent.temperature,
+        maxTokens: agent.maxTokens,
+        model: agent.model,
+      })) ??
+      agent.fallbackReply ??
+      'Maaf, saya belum bisa menjawab saat ini.';
+
+    await this.saveMemory(agent.id, jid, message, reply);
+    return reply;
   }
 
   async uploadKnowledge(
@@ -120,5 +215,29 @@ export class AiService {
     const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
     const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
     return dot / (normA * normB);
+  }
+
+  private async saveMemory(
+    agentId: string,
+    jid: string,
+    userMessage: string,
+    assistantReply: string,
+  ) {
+    await this.prisma.aiConversationMemory.createMany({
+      data: [
+        {
+          agentId,
+          jid,
+          role: 'user',
+          content: userMessage,
+        },
+        {
+          agentId,
+          jid,
+          role: 'assistant',
+          content: assistantReply,
+        },
+      ],
+    });
   }
 }

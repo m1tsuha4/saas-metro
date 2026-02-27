@@ -32,6 +32,7 @@ export class AiAgentService {
         name,
         isEnabled,
         mode: 'BOT',
+        model: 'gemini-2.5-flash',
         temperature: 0.7,
         maxTokens: 100,
         systemPrompt,
@@ -89,6 +90,6 @@ export class AiAgentService {
   async deleteAgent(id: string) {
     return this.prisma.aiAgent.delete({
       where: { id },
-    })
+    });
   }
 }
