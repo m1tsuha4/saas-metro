@@ -13,11 +13,17 @@ export class AiAgentService {
     return agent;
   }
 
+  // Low (0.2–0.4): Strict Fact Based
+  // Medium (0.6–0.8): Conversational
+  // High (0.9+): Creative but risky halucination
   async createAgent(
     sessionId: string,
     ownerId: string,
     name: string,
     isEnabled: boolean,
+    systemPrompt: string,
+    fallbackReply: string,
+    language: string,
   ) {
     const agent = await this.prisma.aiAgent.create({
       data: {
@@ -28,8 +34,9 @@ export class AiAgentService {
         mode: 'BOT',
         temperature: 0.7,
         maxTokens: 100,
-        systemPrompt: null,
-        fallbackReply: null,
+        systemPrompt,
+        fallbackReply,
+        language,
       },
     });
 
@@ -55,6 +62,7 @@ export class AiAgentService {
       maxTokens?: number;
       systemPrompt?: string | null;
       fallbackReply?: string | null;
+      language?: string;
     },
   ) {
     const agent = await this.prisma.aiAgent.update({

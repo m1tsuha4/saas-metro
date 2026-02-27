@@ -324,6 +324,7 @@ model AiAgent {
   maxTokens      Int                    @default(500)
   systemPrompt   String?                @db.Text
   fallbackReply  String?                @db.Text
+  language       String                 @default("id")
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
   owner          User                   @relation(fields: [ownerId], references: [id])

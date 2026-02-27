@@ -15,6 +15,7 @@ import { ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
 import { AiKnowledgeService } from './ai-knowledge.service';
+import { language } from 'googleapis/build/src/apis/language';
 
 @Controller('ai')
 export class AiController {
@@ -34,10 +35,18 @@ export class AiController {
     schema: {
       type: 'object',
       properties: {
-        sessionId: { example: 'cmlha0mid0000mezwjmb13x6j' },
+        sessionId: { example: 'session-177675658669' },
         ownerId: { example: 'cmlha0mid0000mezwjmb13x6j' },
         name: { example: 'mitsuha' },
         isEnabled: { example: true },
+        systemPrompt: {
+          example:
+            'You are a friendly sales assistant for Umroh packages. Be persuasive but polite',
+        },
+        fallbackReply: {
+          example: 'Maaf kak, untuk informasi tersebut silakan hubungi admin',
+        },
+        language: { example: 'id' },
       },
     },
   })
@@ -47,8 +56,19 @@ export class AiController {
     @Body('ownerId') ownerId: string,
     @Body('name') name: string,
     @Body('isEnabled') isEnabled: boolean,
+    @Body('systemPrompt') systemPrompt: string,
+    @Body('fallbackReply') fallbackReply: string,
+    @Body('language') language: string,
   ) {
-    return this.aiAgentService.createAgent(sessionId, ownerId, name, isEnabled);
+    return this.aiAgentService.createAgent(
+      sessionId,
+      ownerId,
+      name,
+      isEnabled,
+      systemPrompt,
+      fallbackReply,
+      language,
+    );
   }
 
   @ApiBody({
@@ -135,7 +155,10 @@ export class AiController {
         temperature: { example: 0.7 },
         maxTokens: { example: 500 },
         systemPrompt: { example: 'You are a helpful assistant.' },
-        fallbackReply: { example: 'Maaf, saya tidak bisa menjawab pertanyaan itu.' },
+        fallbackReply: {
+          example: 'Maaf, saya tidak bisa menjawab pertanyaan itu.',
+        },
+        language: { example: 'id' },
       },
     },
   })
@@ -151,6 +174,7 @@ export class AiController {
       maxTokens?: number;
       systemPrompt?: string | null;
       fallbackReply?: string | null;
+      language?: string;
     },
   ) {
     return this.aiAgentService.updateAgent(id, body);
