@@ -16,7 +16,7 @@ import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   // ==================== DASHBOARD ====================
 
@@ -246,8 +246,8 @@ export class AdminService {
   // ==================== USER MANAGEMENT ====================
 
   async findAllUsers(query: UserQueryDto) {
-    const page = query.page || 1;
-    const limit = query.limit || 10;
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
     const { search, role, status, startDate, endDate, sortBy, sortOrder } =
       query;
     const skip = (page - 1) * limit;
@@ -418,19 +418,19 @@ export class AdminService {
     const activeSubscription = user.subscriptions[0];
     const subscription = activeSubscription
       ? {
-          packageName: activeSubscription.package.name,
-          status: activeSubscription.status,
-          startDate: activeSubscription.startDate.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          }),
-          endDate: activeSubscription.endDate.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          }),
-        }
+        packageName: activeSubscription.package.name,
+        status: activeSubscription.status,
+        startDate: activeSubscription.startDate.toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }),
+        endDate: activeSubscription.endDate.toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }),
+      }
       : null;
 
     return {
@@ -757,8 +757,8 @@ export class AdminService {
   // ==================== PAYMENT MANAGEMENT ====================
 
   async findAllPayments(query: PaymentQueryDto) {
-    const page = query.page || 1;
-    const limit = query.limit || 10;
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
     const { search, status, startDate, endDate, sortBy, sortOrder } = query;
     const skip = (page - 1) * limit;
 
@@ -820,8 +820,10 @@ export class AdminService {
 
     // Format response sesuai UI
     const formattedData = payments.map((payment, index) => ({
+      id: payment.id,
       no: skip + index + 1,
       orderId: payment.orderId,
+      email: payment.user?.email || '-',
       tanggalPesan: payment.createdAt.toLocaleDateString('id-ID', {
         day: '2-digit',
         month: '2-digit',
