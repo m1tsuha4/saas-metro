@@ -83,7 +83,7 @@ export class WaService implements OnModuleInit {
     private gateway: WaGateway,
     private cloudinary: CloudinaryService,
     private aiService: AiService,
-  ) {}
+  ) { }
   async onModuleInit() {
     this.logger.log('Auto-reconnecting WhatsApp sessions...');
 
@@ -226,7 +226,7 @@ export class WaService implements OnModuleInit {
         // reconnect only if not logged out
         if (code !== DisconnectReason.loggedOut) {
           setTimeout(() => {
-            this.connect(sessionId, ownerId, label).catch(() => {});
+            this.connect(sessionId, ownerId, label).catch(() => { });
           }, 3000);
         }
       }
@@ -430,9 +430,34 @@ export class WaService implements OnModuleInit {
       if (rt?.sock) {
         await rt.sock.logout();
       }
-    } catch {}
+    } catch { }
 
     this.sessions.delete(sessionId);
+
+    // Get the agent first to delete its dependents
+    const agent = await this.prisma.aiAgent.findUnique({
+      where: { sessionId },
+      select: { id: true },
+    });
+
+    if (agent) {
+      // Delete dependents in order
+      await this.prisma.aiKnowledgeFile.deleteMany({
+        where: { agentId: agent.id },
+      });
+      await this.prisma.aiEmbedding.deleteMany({
+        where: { agentId: agent.id },
+      });
+      await this.prisma.aiConversationMemory.deleteMany({
+        where: { agentId: agent.id },
+      });
+      await this.prisma.aiUsageLog.deleteMany({
+        where: { agentId: agent.id },
+      });
+
+      // Now delete the agent
+      await this.prisma.aiAgent.delete({ where: { id: agent.id } });
+    }
 
     // delete session from DB
     await this.prisma.waSession.deleteMany({
@@ -500,7 +525,7 @@ export class WaService implements OnModuleInit {
                   errorMessage: 'Not on WhatsApp',
                 },
               })
-              .catch(() => {});
+              .catch(() => { });
             continue;
           }
         }
@@ -520,7 +545,7 @@ export class WaService implements OnModuleInit {
               status: 'SENT',
             },
           })
-          .catch(() => {});
+          .catch(() => { });
 
         await sleep(withJitter(delayMs, jitterMs)); // atur jarak kirim
       } catch (e: any) {
@@ -539,7 +564,7 @@ export class WaService implements OnModuleInit {
               errorMessage: msg,
             },
           })
-          .catch(() => {});
+          .catch(() => { });
         // backoff a bit before next number
         await sleep(withJitter(Math.max(delayMs, 1200), jitterMs));
       }
@@ -583,7 +608,7 @@ export class WaService implements OnModuleInit {
         select: { id: true },
       });
       campaignId = camp.id;
-    } catch {}
+    } catch { }
 
     const results: Array<{
       phone: string;
@@ -616,7 +641,7 @@ export class WaService implements OnModuleInit {
                   errorMessage: 'Not on WhatsApp',
                 },
               })
-              .catch(() => {});
+              .catch(() => { });
             continue;
           }
         }
@@ -642,7 +667,7 @@ export class WaService implements OnModuleInit {
               status: 'SENT',
             },
           })
-          .catch(() => {});
+          .catch(() => { });
 
         await sleep(withJitter(delayMs, jitterMs));
       } catch (e: any) {
@@ -662,7 +687,7 @@ export class WaService implements OnModuleInit {
               errorMessage: msg,
             },
           })
-          .catch(() => {});
+          .catch(() => { });
         await sleep(withJitter(Math.max(delayMs, 1500), jitterMs));
       }
     }

@@ -35,7 +35,8 @@ export class CloudinaryService {
     return new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          resource_type: 'raw',
+          resource_type: 'image',
+          format: 'pdf',
           folder: 'ai-knowledge',
           public_id: fileName,
           type: 'upload',
