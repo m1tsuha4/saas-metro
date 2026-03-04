@@ -118,7 +118,10 @@ export class WaService implements OnModuleInit {
     }
 
     // Prepare runtime
-    const runtime: SessionRuntime = {
+    const runtime: SessionRuntime & {
+      __resolve?: (v: { connected: boolean; qr?: string | null }) => void;
+      __reject?: (e: any) => void;
+    } = {
       ready: false,
       ownerId,
       connecting: true,
@@ -166,10 +169,44 @@ export class WaService implements OnModuleInit {
       }
 
       if (connection === 'open') {
-        runtime.ready = true;
         runtime.qr = undefined;
 
         const me = sock.user?.id ?? null;
+
+        // Telephone validation 
+        // Extract bare phone from JID (e.g. "628xxx:12@s.whatsapp.net" → "628xxx")
+        const connectedPhone = me ? me.split('@')[0].split(':')[0] : null;
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: ownerId },
+          select: { telephone: true },
+        });
+
+        if (user?.telephone && connectedPhone) {
+          // Normalize both sides: strip leading + or spaces
+          const normalize = (p: string) => p.replace(/^\+/, '').replace(/\s+/g, '');
+          const expectedPhone = normalize(user.telephone);
+          const actualPhone = normalize(connectedPhone);
+
+          if (expectedPhone !== actualPhone) {
+            this.logger.warn(
+              `Session ${sessionId}: WA number ${actualPhone} does not match user telephone ${expectedPhone}. Rejecting.`,
+            );
+
+            // Disconnect the socket
+            runtime.connecting = false;
+            runtime.ready = false;
+            this.sessions.delete(sessionId);
+            try { sock.end(new Error('Telephone mismatch')); } catch { }
+
+            // Reject the awaiting Promise directly
+            runtime.__reject?.(new ForbiddenException(
+              `WhatsApp number (${actualPhone}) does not match your registered telephone number (${expectedPhone}).`,
+            ));
+            return;
+          }
+        }
+        runtime.ready = true;
 
         // create once, update later
         const exists = await this.prisma.whatsAppSession.findUnique({
@@ -198,6 +235,9 @@ export class WaService implements OnModuleInit {
         }
 
         this.logger.log(`Session ${sessionId} connected as ${me}`);
+
+        // Resolve the awaiting Promise
+        runtime.__resolve?.({ connected: true, qr: null });
       }
 
       if (connection === 'close') {
@@ -236,7 +276,11 @@ export class WaService implements OnModuleInit {
     const result = await new Promise<{
       connected: boolean;
       qr?: string | null;
-    }>((resolve) => {
+    }>((resolve, reject) => {
+      // Store callbacks so the async connection.update handler can settle this promise
+      runtime.__resolve = (v) => { if (!done) { done = true; clearTimeout(timeout); resolve(v); } };
+      runtime.__reject = (e) => { if (!done) { done = true; clearTimeout(timeout); reject(e); } };
+
       let done = false;
 
       const timeout = setTimeout(() => {
@@ -246,13 +290,15 @@ export class WaService implements OnModuleInit {
         }
       }, 20000);
 
+      // QR events are still handled here (they do not need async DB work)
       sock.ev.on('connection.update', (u) => {
         if (done) return;
-        if (u.qr || u.connection === 'open') {
+        if (u.qr) {
           clearTimeout(timeout);
           done = true;
-          resolve({ connected: runtime.ready, qr: runtime.qr ?? null });
+          resolve({ connected: false, qr: runtime.qr ?? null });
         }
+        // 'open' is handled asynchronously in the other listener above
       });
     });
 
