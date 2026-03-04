@@ -8,7 +8,6 @@ import * as qrcode from 'qrcode';
 import pino from 'pino';
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -28,6 +27,8 @@ type SessionRuntime = {
   ready: boolean;
   ownerId?: string;
   connecting: boolean;
+  rejected?: boolean;
+  error?: string;
 };
 
 type BroadcastTextInput = {
@@ -183,26 +184,28 @@ export class WaService implements OnModuleInit {
         });
 
         if (user?.telephone && connectedPhone) {
-          // Normalize both sides: strip leading + or spaces
-          const normalize = (p: string) => p.replace(/^\+/, '').replace(/\s+/g, '');
+          // Normalize both sides: strip +, spaces, and leading zeros
+          const normalize = (p: string) =>
+            p.replace(/^\+/, '').replace(/\s+/g, '').replace(/^0+/, '');
           const expectedPhone = normalize(user.telephone);
           const actualPhone = normalize(connectedPhone);
+          this.logger.log(
+            `Session ${sessionId}: telephone check — DB="${expectedPhone}" vs WA="${actualPhone}"`,
+          );
 
           if (expectedPhone !== actualPhone) {
             this.logger.warn(
               `Session ${sessionId}: WA number ${actualPhone} does not match user telephone ${expectedPhone}. Rejecting.`,
             );
 
-            // Disconnect the socket
             runtime.connecting = false;
             runtime.ready = false;
-            this.sessions.delete(sessionId);
+            runtime.rejected = true;
+            runtime.error = `WhatsApp number (${actualPhone}) does not match your registered telephone number (${expectedPhone}). Please logout and use the correct number.`;
             try { sock.end(new Error('Telephone mismatch')); } catch { }
 
             // Reject the awaiting Promise directly
-            runtime.__reject?.(new ForbiddenException(
-              `WhatsApp number (${actualPhone}) does not match your registered telephone number (${expectedPhone}).`,
-            ));
+            runtime.__reject?.(new BadRequestException(runtime.error));
             return;
           }
         }
@@ -263,8 +266,8 @@ export class WaService implements OnModuleInit {
 
         this.sessions.delete(sessionId);
 
-        // reconnect only if not logged out
-        if (code !== DisconnectReason.loggedOut) {
+        // reconnect only if not logged out and not rejected due to telephone mismatch
+        if (code !== DisconnectReason.loggedOut && !runtime.rejected) {
           setTimeout(() => {
             this.connect(sessionId, ownerId, label).catch(() => { });
           }, 3000);
@@ -321,6 +324,11 @@ export class WaService implements OnModuleInit {
       throw new NotFoundException(
         'Session not initialized. Call /wa/session/:id/connect first.',
       );
+
+    if (rt.error) {
+      throw new BadRequestException(rt.error);
+    }
+
     return { sessionId, qr: rt.qr ?? null, connected: rt.ready };
   }
 
