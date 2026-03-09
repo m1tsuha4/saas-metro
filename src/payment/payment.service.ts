@@ -21,13 +21,16 @@ export class PaymentService {
   async getPackages() {
     const packages = await this.prisma.package.findMany({
       where: { isActive: true },
+      include: {
+            packageLists: true
+      },
       orderBy: { createdAt: 'desc' },
     });
 
     return {
       data: packages.map((pkg) => ({
         ...pkg,
-        features: pkg.features ? JSON.parse(pkg.features) : [],
+        features: pkg.packageLists ? pkg.packageLists.map((f) => f.name) : [],
         benefits: this.getPackageBenefits(pkg.name),
       })),
       clientKey: this.midtransService.getClientKey(),
@@ -251,7 +254,13 @@ export class PaymentService {
         status: 'ACTIVE',
         endDate: { gte: new Date() },
       },
-      include: { package: true },
+      include: {
+        package:{
+          include:{
+          packageLists: true
+          }
+        }
+      },
       orderBy: { endDate: 'desc' },
     });
 
@@ -264,9 +273,9 @@ export class PaymentService {
         ...subscription,
         package: {
           ...subscription.package,
-          features: subscription.package.features
-            ? JSON.parse(subscription.package.features)
-            : [],
+          features: subscription.package.packageLists 
+          ? subscription.package.packageLists.map(f => f.name) 
+          : [],
         },
       },
     };

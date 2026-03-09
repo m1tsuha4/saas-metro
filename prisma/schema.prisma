@@ -217,7 +217,7 @@ model Package {
   price        Int
   currency     String  @default("IDR")
   billingCycle String  @default("monthly") // 'monthly' or 'yearly'
-  features     String? @db.Text // JSON array of feature keys
+  packageLists PackageList[]
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -226,6 +226,17 @@ model Package {
   subscriptions Subscription[]
 
   @@map("package")
+}
+
+model PackageList {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  packages  Package[]
+
+  @@map("package_list")
 }
 
 model Subscription {
