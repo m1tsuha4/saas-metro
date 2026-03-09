@@ -466,12 +466,14 @@ export class WaService implements OnModuleInit {
 
     const participating = await rt.sock.groupFetchAllParticipating();
     const metaMap = participating as unknown as Record<string, GroupMetadata>;
-    const groups = Object.values(metaMap).map((g) => ({
-      id: g.id,
-      subject: g.subject,
-      size: g.size,
-      participants: g.participants?.length ?? 0,
-    }));
+    const groups = Object.values(metaMap)
+      .filter((g) => !g.isCommunity)
+      .map((g) => ({
+        id: g.id,
+        subject: g.subject,
+        size: g.size,
+        participants: g.participants?.length ?? 0,
+      }));
 
     return { count: groups.length, groups };
   }
