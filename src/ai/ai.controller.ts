@@ -15,7 +15,7 @@ import { ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
 import { AiKnowledgeService } from './ai-knowledge.service';
-import { language } from 'googleapis/build/src/apis/language';
+import { KnowledgeFileType } from '@prisma/client';
 
 @Controller('ai')
 export class AiController {
@@ -24,7 +24,7 @@ export class AiController {
     private readonly aiAgentService: AiAgentService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly aiKnowledgeService: AiKnowledgeService,
-  ) {}
+  ) { }
 
   @Get(':sessionId')
   async getAgent(@Param('sessionId') sessionId: string) {
@@ -96,6 +96,14 @@ export class AiController {
         file: {
           type: 'string',
           format: 'binary',
+          description: 'PDF file to upload',
+        },
+        fileType: {
+          type: 'string',
+          enum: ['COMPANY_PROFILE', 'PRICELIST', 'FAQ'],
+          default: 'FAQ',
+          description:
+            'Knowledge category: COMPANY_PROFILE, PRICELIST, or FAQ',
         },
       },
     },
@@ -105,18 +113,25 @@ export class AiController {
   async uploadKnowledge(
     @Param('agentId') agentId: string,
     @UploadedFile() file: Express.Multer.File,
+    @Body('fileType') fileTypeRaw?: string,
   ) {
+    // Default to FAQ if not provided or unrecognised
+    const fileType: KnowledgeFileType =
+      (fileTypeRaw as KnowledgeFileType) ?? KnowledgeFileType.FAQ;
+
     const fileName = file.originalname;
     const fileRecord = await this.aiService.uploadKnowledge(
       agentId,
       fileName,
       'TEMP_URL',
       'PROCESSING',
+      fileType,
     );
     await this.aiKnowledgeService.processPdfBuffer(
       agentId,
       fileRecord.id,
       file.buffer,
+      fileType,
     );
 
     const uploaded = await this.cloudinaryService.uploadPdf(
@@ -129,7 +144,7 @@ export class AiController {
       uploaded.secure_url,
     );
 
-    return { success: true };
+    return { success: true, fileType };
   }
 
   @Get(':agentId/knowledge')

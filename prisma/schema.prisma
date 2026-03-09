@@ -211,12 +211,12 @@ model ClientLogo {
 }
 
 model Package {
-  id           String  @id @default(cuid())
-  name         String  @unique
-  description  String  @db.Text
+  id           String        @id @default(cuid())
+  name         String        @unique
+  description  String        @db.Text
   price        Int
-  currency     String  @default("IDR")
-  billingCycle String  @default("monthly") // 'monthly' or 'yearly'
+  currency     String        @default("IDR")
+  billingCycle String        @default("monthly") // 'monthly' or 'yearly'
   packageLists PackageList[]
 
   isActive  Boolean  @default(true)
@@ -229,12 +229,12 @@ model Package {
 }
 
 model PackageList {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  packages  Package[]
+  packages Package[]
 
   @@map("package_list")
 }
@@ -360,6 +360,7 @@ model AiKnowledgeFile {
   fileName String
   fileUrl  String
   fileSize Int?
+  fileType KnowledgeFileType @default(FAQ)
 
   status FileStatus @default(PROCESSING)
 
@@ -371,6 +372,12 @@ model AiKnowledgeFile {
   @@map("aiknowledgefile")
 }
 
+enum KnowledgeFileType {
+  COMPANY_PROFILE
+  PRICELIST
+  FAQ
+}
+
 enum FileStatus {
   PROCESSING
   READY
@@ -378,17 +385,20 @@ enum FileStatus {
 }
 
 model AiEmbedding {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   agentId String
+  fileId  String?
 
-  content   String @db.Text
+  content   String            @db.Text
   embedding Json // store vector array
+  fileType  KnowledgeFileType @default(FAQ)
 
   createdAt DateTime @default(now())
 
   agent AiAgent @relation(fields: [agentId], references: [id])
 
   @@index([agentId])
+  @@index([agentId, fileType])
   @@map("aiembedding")
 }
 
@@ -419,8 +429,8 @@ model AiUsageLog {
 }
 
 model WaSession {
-  id  String @id 
-  data Json
+  id        String   @id
+  data      Json
   updatedAt DateTime @updatedAt
 
   @@map("wasession")

@@ -77,6 +77,9 @@ export class AuthController {
     @User() user,
     @Body(new ZodValidationPipe(UpdateUserSchema)) dto: UpdateUserDto,
   ) {
+    if (dto.telephone?.startsWith('08')) {
+      dto.telephone = '62' + dto.telephone.slice(1);
+    }
     return this.userService.updateUser(user.id, dto);
   }
 

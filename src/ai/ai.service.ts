@@ -1,9 +1,9 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AiResponseService } from './ai-response.service';
-import { agent } from 'supertest';
 import { AiProvider } from './providers/ai-provider.interface';
 import { AiKnowledgeService } from './ai-knowledge.service';
+import { KnowledgeFileType } from '@prisma/client';
 
 @Injectable()
 export class AiService {
@@ -13,7 +13,7 @@ export class AiService {
     @Inject('AI_PROVIDER')
     private readonly aiProvider: AiProvider,
     private readonly aiKnowledgeService: AiKnowledgeService,
-  ) {}
+  ) { }
 
   async handleIncomingMessage(params: {
     sessionId: string;
@@ -33,17 +33,20 @@ export class AiService {
     if (!agent || !agent.isEnabled) return null;
     if (agent.mode === 'HUMAN') return null;
 
-    // Detect Intent
+    // ─── Detect Intent ───────────────────────────────────────────────────────
     const intentRaw = await this.aiProvider.generateReply({
       systemPrompt: `
-Classify the user's intent into ONE of these categories:
-- GREETING
-- PRODUCT_QUESTION
-- PRICE_QUESTION
-- SMALL_TALK
-- OTHER
+You are an intent classifier for a business chatbot.
+Classify the user's message into EXACTLY ONE of these categories:
 
-Respond with only the category name.
+- GREETING          → The user is greeting (hi, hello, halo, etc.)
+- PRODUCT_QUESTION  → Asking about products, services, or the company
+- PRICE_QUESTION    → Asking about prices, costs, packages, or payment
+- FAQ_QUESTION      → Asking about policies, process, how-to, or general questions
+- SMALL_TALK        → Casual conversation not about the business
+- OUT_OF_CONTEXT    → Completely off-topic (politics, celebrities, general world knowledge, etc.)
+
+Respond with ONLY the category name, nothing else.
 `,
       userMessage: message,
       temperature: 0,
@@ -54,7 +57,16 @@ Respond with only the category name.
     const intent = (intentRaw ?? 'OTHER').trim().toUpperCase();
     console.log('Detected intent:', intent);
 
-    // Load Conversation Memory
+    // ─── Out-of-Context: return fallback immediately, no LLM call ────────────
+    if (intent === 'OUT_OF_CONTEXT') {
+      const fallback =
+        agent.fallbackReply ??
+        'Maaf, saya hanya bisa menjawab pertanyaan seputar bisnis kami. Silakan hubungi admin untuk informasi lainnya.';
+      await this.saveMemory(agent.id, jid, message, fallback);
+      return fallback;
+    }
+
+    // ─── Load Conversation Memory ─────────────────────────────────────────────
     const memories = await this.prisma.aiConversationMemory.findMany({
       where: { agentId: agent.id, jid },
       orderBy: { createdAt: 'desc' },
@@ -66,6 +78,10 @@ Respond with only the category name.
       .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n');
 
+    const persona =
+      agent.systemPrompt?.trim() ||
+      'You are a friendly and professional business assistant.';
+
     const languageInstruction =
       agent.language === 'en'
         ? 'Respond in English.'
@@ -73,12 +89,12 @@ Respond with only the category name.
 
     let reply = '';
 
-    //  GREETING
+    // ─── GREETING ─────────────────────────────────────────────────────────────
     if (intent === 'GREETING') {
       reply =
         (await this.aiProvider.generateReply({
           systemPrompt: `
-You are a friendly and professional sales assistant.
+${persona}
 ${languageInstruction}
 Greet warmly and offer help.
 
@@ -91,40 +107,38 @@ ${historyText}
           model: agent.model,
         })) ??
         agent.fallbackReply ??
-        'Maaf, saya belum bisa menjawab saat ini silkaan hubungi admin.';
+        'Halo! Ada yang bisa saya bantu?';
 
       await this.saveMemory(agent.id, jid, message, reply);
       return reply;
     }
 
-    // PRODUCT / PRICE → Use RAG
-    if (intent === 'PRODUCT_QUESTION' || intent === 'PRICE_QUESTION') {
+    // ─── PRODUCT_QUESTION → RAG: Company Profile + Pricelist ─────────────────
+    if (intent === 'PRODUCT_QUESTION') {
       const queryEmbedding = await this.aiProvider.generateEmbedding(message);
-
       const matches = await this.aiKnowledgeService.searchSimilarChunks(
         agent.id,
         queryEmbedding,
         5,
+        [KnowledgeFileType.COMPANY_PROFILE, KnowledgeFileType.PRICELIST],
       );
 
-      console.log('RAG matches:', matches.length);
-
+      console.log('RAG matches (product):', matches.length);
       const context = matches.map((m) => m.content).join('\n\n');
 
       reply =
         (await this.aiProvider.generateReply({
           systemPrompt: `
-You are a professional sales assistant.
+${persona}
 ${languageInstruction}
 
-Use the knowledge below to answer.
-Be friendly and persuasive.
-Offer next step (survey, booking, etc).
+Use the company knowledge below to answer questions about our products and services.
+Be friendly and persuasive. Offer a next step (survey, booking, consultation, etc.).
 
 Conversation history:
 ${historyText}
 
-Knowledge:
+Company Knowledge:
 ${context}
 `,
           userMessage: message,
@@ -139,14 +153,94 @@ ${context}
       return reply;
     }
 
-    // SMALL TALK
+    // ─── PRICE_QUESTION → RAG: Pricelist ─────────────────────────────────────
+    if (intent === 'PRICE_QUESTION') {
+      const queryEmbedding = await this.aiProvider.generateEmbedding(message);
+      const matches = await this.aiKnowledgeService.searchSimilarChunks(
+        agent.id,
+        queryEmbedding,
+        5,
+        [KnowledgeFileType.PRICELIST],
+      );
+
+      console.log('RAG matches (price):', matches.length);
+      const context = matches.map((m) => m.content).join('\n\n');
+
+      reply =
+        (await this.aiProvider.generateReply({
+          systemPrompt: `
+${persona}
+${languageInstruction}
+
+Use the price list below to answer pricing questions accurately.
+Be transparent about prices and offer to help them choose the right package.
+
+Conversation history:
+${historyText}
+
+Price List:
+${context}
+`,
+          userMessage: message,
+          temperature: agent.temperature,
+          maxTokens: agent.maxTokens,
+          model: agent.model,
+        })) ??
+        agent.fallbackReply ??
+        'Maaf, saya belum bisa menjawab saat ini.';
+
+      await this.saveMemory(agent.id, jid, message, reply);
+      return reply;
+    }
+
+    // ─── FAQ_QUESTION → RAG: FAQ ──────────────────────────────────────────────
+    if (intent === 'FAQ_QUESTION') {
+      const queryEmbedding = await this.aiProvider.generateEmbedding(message);
+      const matches = await this.aiKnowledgeService.searchSimilarChunks(
+        agent.id,
+        queryEmbedding,
+        5,
+        [KnowledgeFileType.FAQ],
+      );
+
+      console.log('RAG matches (faq):', matches.length);
+      const context = matches.map((m) => m.content).join('\n\n');
+
+      reply =
+        (await this.aiProvider.generateReply({
+          systemPrompt: `
+${persona}
+${languageInstruction}
+
+Use the FAQ knowledge below to answer the question clearly and completely.
+If the answer is not covered in the FAQ, politely say so and suggest contacting admin.
+
+Conversation history:
+${historyText}
+
+FAQ Knowledge:
+${context}
+`,
+          userMessage: message,
+          temperature: agent.temperature,
+          maxTokens: agent.maxTokens,
+          model: agent.model,
+        })) ??
+        agent.fallbackReply ??
+        'Maaf, saya belum bisa menjawab saat ini.';
+
+      await this.saveMemory(agent.id, jid, message, reply);
+      return reply;
+    }
+
+    // ─── SMALL_TALK (fallback for anything else) ──────────────────────────────
     reply =
       (await this.aiProvider.generateReply({
         systemPrompt: `
-You are a conversational sales assistant.
+${persona}
 ${languageInstruction}
 
-Be natural, helpful, and engaging.
+Be natural, helpful, and engaging. Gently steer the conversation back to our products or services when appropriate.
 
 Conversation history:
 ${historyText}
@@ -168,6 +262,7 @@ ${historyText}
     fileName: string,
     fileUrl: string,
     status: 'PROCESSING' | 'READY' | 'FAILED',
+    fileType: KnowledgeFileType = KnowledgeFileType.FAQ,
   ) {
     const agent = await this.prisma.aiAgent.findUnique({
       where: {
@@ -185,6 +280,7 @@ ${historyText}
         fileName,
         fileUrl,
         status,
+        fileType,
       },
     });
 
