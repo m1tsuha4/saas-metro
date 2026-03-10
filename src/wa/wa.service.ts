@@ -20,6 +20,7 @@ import { WaGateway } from './wa.gateway';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
 import { AiService } from 'src/ai/ai.service';
 import { useDbAuthState } from './baileys-db-auth';
+import { CryptoService } from 'src/common/services/crypto.service';
 
 type SessionRuntime = {
   qr?: string;
@@ -84,27 +85,28 @@ export class WaService implements OnModuleInit {
     private gateway: WaGateway,
     private cloudinary: CloudinaryService,
     private aiService: AiService,
+    private crypto: CryptoService,
   ) { }
   async onModuleInit() {
-    // this.logger.log('Auto-reconnecting WhatsApp sessions...');
+    this.logger.log('Auto-reconnecting WhatsApp sessions...');
 
-    // const sessions = await this.prisma.whatsAppSession.findMany({
-    //   where: { connected: true },
-    // });
+    const sessions = await this.prisma.whatsAppSession.findMany({
+      where: { connected: true },
+    });
 
-    // for (const s of sessions) {
-    //   if (!s.ownerId) {
-    //     this.logger.warn(`Skipping session ${s.id} because ownerId is null`);
-    //     continue;
-    //   }
+    for (const s of sessions) {
+      if (!s.ownerId) {
+        this.logger.warn(`Skipping session ${s.id} because ownerId is null`);
+        continue;
+      }
 
-    //   try {
-    //     await this.connect(s.id, s.ownerId, s.label ?? undefined);
-    //     this.logger.log(`Auto-reconnected session ${s.id}`);
-    //   } catch (err: any) {
-    //     this.logger.error(`Failed to auto-reconnect ${s.id}: ${err.message}`);
-    //   }
-    // }
+      try {
+        await this.connect(s.id, s.ownerId, s.label ?? undefined);
+        this.logger.log(`Auto-reconnected session ${s.id}`);
+      } catch (err: any) {
+        this.logger.error(`Failed to auto-reconnect ${s.id}: ${err.message}`);
+      }
+    }
   }
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
@@ -358,7 +360,7 @@ export class WaService implements OnModuleInit {
           phone: jid,
           direction: 'OUTGOING',
           messageId,
-          text,
+          text: this.crypto.encrypt(text),
           type: 'conversation',
           status: 'SENT',
         },
@@ -576,7 +578,7 @@ export class WaService implements OnModuleInit {
                   sessionId,
                   campaignId,
                   direction: 'OUTGOING',
-                  text,
+                  text: this.crypto.encrypt(text),
                   status: 'FAILED',
                   errorMessage: 'Not on WhatsApp',
                 },
@@ -597,7 +599,7 @@ export class WaService implements OnModuleInit {
               sessionId,
               campaignId,
               direction: 'OUTGOING',
-              text,
+              text: this.crypto.encrypt(text),
               status: 'SENT',
             },
           })
@@ -615,7 +617,7 @@ export class WaService implements OnModuleInit {
               sessionId,
               campaignId,
               direction: 'OUTGOING',
-              text,
+              text: this.crypto.encrypt(text),
               status: 'FAILED',
               errorMessage: msg,
             },
@@ -1086,8 +1088,11 @@ export class WaService implements OnModuleInit {
       }),
     });
 
-    // Reverse so FE gets oldest→newest (chronological) order
-    return messages.reverse();
+    // Reverse so FE gets oldest→newest (chronological) order, then decrypt text
+    return messages.reverse().map((m) => ({
+      ...m,
+      text: this.crypto.decrypt(m.text),
+    }));
   }
 
   public async markConversationAsRead(sessionId: string, jid: string) {
@@ -1282,7 +1287,7 @@ export class WaService implements OnModuleInit {
         phone: remoteJid,
         direction: fromMe ? 'OUTGOING' : 'INCOMING',
         messageId,
-        text,
+        text: this.crypto.encrypt(text),
         type: messageType,
         mediaUrl,
         rawJson: msg,
@@ -1360,7 +1365,7 @@ export class WaService implements OnModuleInit {
       },
       update: {
         lastMessageId: messageId,
-        lastMessageText: text,
+        lastMessageText: this.crypto.encrypt(text),
         lastMessageType: messageType,
         lastMessageAt: new Date(),
         unreadCount: fromMe
@@ -1374,7 +1379,7 @@ export class WaService implements OnModuleInit {
         name: name ?? null,
         isGroup: jid.endsWith('@g.us'),
         lastMessageId: messageId,
-        lastMessageText: text,
+        lastMessageText: this.crypto.encrypt(text),
         lastMessageType: messageType,
         lastMessageAt: new Date(),
         unreadCount: fromMe ? 0 : 1,
