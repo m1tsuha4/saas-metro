@@ -33,7 +33,6 @@ type SessionRuntime = {
 };
 
 type BroadcastTextInput = {
-  sessionId: string;
   recipients?: string[];
   contactIds?: string[];
   useAllContacts?: boolean;
@@ -44,7 +43,6 @@ type BroadcastTextInput = {
 };
 
 type BroadcastImageInput = {
-  sessionId: string;
   recipients?: string[];
   contactIds?: string[];
   useAllContacts?: boolean;
@@ -310,6 +308,20 @@ export class WaService implements OnModuleInit {
     return { sessionId, ...result };
   }
 
+  /** Resolve the active WhatsApp session ID for a given owner */
+  async getSessionByOwner(ownerId: string): Promise<string> {
+    const session = await this.prisma.whatsAppSession.findFirst({
+      where: { ownerId, connected: true },
+      select: { id: true },
+    });
+    if (!session) {
+      throw new NotFoundException(
+        'No active WhatsApp session found. Please connect first.',
+      );
+    }
+    return session.id;
+  }
+
   /** List all sessions from database */
   async listSessions(ownerId: string) {
     const sessions = await this.prisma.whatsAppSession.findMany({
@@ -529,8 +541,8 @@ export class WaService implements OnModuleInit {
     return { success: true, requireQr: true };
   }
 
-  async broadcastText(ownerId: string, dto: BroadcastTextInput) {
-    const { sessionId, text, delayMs, jitterMs, checkNumber } = dto;
+  async broadcastText(ownerId: string, sessionId: string, dto: BroadcastTextInput) {
+    const { text, delayMs, jitterMs, checkNumber } = dto;
     const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
     if (!recipients.length) {
       throw new BadRequestException(
@@ -636,9 +648,8 @@ export class WaService implements OnModuleInit {
     };
   }
 
-  async broadcastImage(ownerId: string, dto: BroadcastImageInput) {
-    const { sessionId, caption, imageUrl, delayMs, jitterMs, checkNumber } =
-      dto;
+  async broadcastImage(ownerId: string, sessionId: string, dto: BroadcastImageInput) {
+    const { caption, imageUrl, delayMs, jitterMs, checkNumber } = dto;
     const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
     if (!recipients.length) {
       throw new BadRequestException(
@@ -759,25 +770,22 @@ export class WaService implements OnModuleInit {
   }
 
   // 1) Send into a group chat (text)
-  public async groupSendText(dto: {
-    sessionId: string;
-    groupJid: string;
-    text: string;
-  }) {
-    const rt = await this.ensureConnected(dto.sessionId);
+  public async groupSendText(
+    sessionId: string,
+    dto: { groupJid: string; text: string },
+  ) {
+    const rt = await this.ensureConnected(sessionId);
 
     const res = await rt.sock.sendMessage(dto.groupJid, { text: dto.text });
     return { groupJid: dto.groupJid, messageId: res?.key?.id ?? null };
   }
 
   // 2) Send into a group chat (image+caption)
-  public async groupSendImage(dto: {
-    sessionId: string;
-    groupJid: string;
-    imageUrl: string;
-    caption?: string;
-  }) {
-    const rt = await this.ensureConnected(dto.sessionId);
+  public async groupSendImage(
+    sessionId: string,
+    dto: { groupJid: string; imageUrl: string; caption?: string },
+  ) {
+    const rt = await this.ensureConnected(sessionId);
 
     const img = await this.fetchImageBuffer(dto.imageUrl);
     const res = await rt.sock.sendMessage(dto.groupJid, {
@@ -828,16 +836,17 @@ export class WaService implements OnModuleInit {
   }
 
   // 3) DM every member (text)
-  public async groupDmMembersText(dto: {
-    sessionId: string;
-    groupJid: string;
-    text: string;
-    delayMs?: number;
-    jitterMs?: number;
-    includeAdmins?: boolean;
-  }) {
+  public async groupDmMembersText(
+    sessionId: string,
+    dto: {
+      groupJid: string;
+      text: string;
+      delayMs?: number;
+      jitterMs?: number;
+      includeAdmins?: boolean;
+    },
+  ) {
     const {
-      sessionId,
       groupJid,
       text,
       delayMs = 1500,
@@ -908,17 +917,18 @@ export class WaService implements OnModuleInit {
   }
 
   // 4) DM every member (image)
-  public async groupDmMembersImage(dto: {
-    sessionId: string;
-    groupJid: string;
-    imageUrl: string;
-    caption?: string;
-    delayMs?: number;
-    jitterMs?: number;
-    includeAdmins?: boolean;
-  }) {
+  public async groupDmMembersImage(
+    sessionId: string,
+    dto: {
+      groupJid: string;
+      imageUrl: string;
+      caption?: string;
+      delayMs?: number;
+      jitterMs?: number;
+      includeAdmins?: boolean;
+    },
+  ) {
     const {
-      sessionId,
       groupJid,
       imageUrl,
       caption,

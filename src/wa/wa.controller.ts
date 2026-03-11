@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { WaService } from './wa.service';
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
@@ -26,7 +33,7 @@ import { User } from 'src/common/decorators/user.decorator';
 @ApiBearerAuth()
 @Controller('wa')
 export class WaController {
-  constructor(private readonly wa: WaService) {}
+  constructor(private readonly wa: WaService) { }
 
   @Get('sessions')
   async listSessions(@User('id') ownerId: string) {
@@ -48,33 +55,41 @@ export class WaController {
   }
 
   @Post('send')
-  async send(@Body(new ZodValidationPipe(SendSchema)) dto: SendDto) {
-    return this.wa.sendText(dto.sessionId, dto.to, dto.text);
+  async send(
+    @User('id') ownerId: string,
+    @Body(new ZodValidationPipe(SendSchema)) dto: SendDto,
+  ) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    return this.wa.sendText(sessionId, dto.to, dto.text);
   }
 
-  @Post('check/:sessionId/:phone')
+  @Get('check/:phone')
   async check(
-    @Param('sessionId') sessionId: string,
+    @User('id') ownerId: string,
     @Param('phone') phone: string,
   ) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.checkNumber(sessionId, phone);
   }
 
-  @Get('groups/:sessionId')
-  async groups(@Param('sessionId') sessionId: string) {
+  @Get('groups')
+  async groups(@User('id') ownerId: string) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.fetchGroups(sessionId);
   }
 
-  @Get('group/:sessionId/:groupJid/members')
+  @Get('group/:groupJid/members')
   async groupMembers(
-    @Param('sessionId') sessionId: string,
+    @User('id') ownerId: string,
     @Param('groupJid') groupJid: string,
   ) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.getGroupMembers(sessionId, groupJid);
   }
 
-  @Post('logout/:sessionId')
-  async logout(@Param('sessionId') sessionId: string) {
+  @Post('logout')
+  async logout(@User('id') ownerId: string) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.logout(sessionId);
   }
 
@@ -83,7 +98,8 @@ export class WaController {
     @User('id') ownerId: string,
     @Body(new ZodValidationPipe(BroadcastTextSchema)) dto: BroadcastTextDto,
   ) {
-    const result = await this.wa.broadcastText(ownerId, dto);
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    const result = await this.wa.broadcastText(ownerId, sessionId, dto);
     return { success: true, ...result };
   }
 
@@ -92,62 +108,74 @@ export class WaController {
     @User('id') ownerId: string,
     @Body(new ZodValidationPipe(BroadcastImageSchema)) dto: BroadcastImageDto,
   ) {
-    const result = await this.wa.broadcastImage(ownerId, dto);
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    const result = await this.wa.broadcastImage(ownerId, sessionId, dto);
     return { success: true, ...result };
   }
 
   @Post('group/send-text')
   async groupSendText(
+    @User('id') ownerId: string,
     @Body(new ZodValidationPipe(GroupSendTextSchema)) dto: GroupSendTextDto,
   ) {
-    const data = await this.wa.groupSendText(dto);
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    const data = await this.wa.groupSendText(sessionId, dto);
     return { success: true, ...data };
   }
 
   @Post('group/send-image')
   async groupSendImage(
+    @User('id') ownerId: string,
     @Body(new ZodValidationPipe(GroupSendImageSchema)) dto: GroupSendImageDto,
   ) {
-    const data = await this.wa.groupSendImage(dto);
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    const data = await this.wa.groupSendImage(sessionId, dto);
     return { success: true, ...data };
   }
 
   @Post('group/dm-members-text')
   async groupDmMembersText(
+    @User('id') ownerId: string,
     @Body(new ZodValidationPipe(GroupDmMembersTextSchema))
     dto: GroupDmMembersTextDto,
   ) {
-    const data = await this.wa.groupDmMembersText(dto);
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    const data = await this.wa.groupDmMembersText(sessionId, dto);
     return data;
   }
 
   @Post('group/dm-members-image')
   async groupDmMembersImage(
+    @User('id') ownerId: string,
     @Body(new ZodValidationPipe(GroupDmMembersImageSchema))
     dto: GroupDmMembersImageDto,
   ) {
-    const data = await this.wa.groupDmMembersImage(dto);
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    const data = await this.wa.groupDmMembersImage(sessionId, dto);
     return data;
   }
 
-  @Get('list-conversations/:sessionId')
-  async listConversations(@Param('sessionId') sessionId: string) {
+  @Get('list-conversations')
+  async listConversations(@User('id') ownerId: string) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.listConversations({ sessionId });
   }
 
-  @Get('conversations/:sessionId/:jid')
+  @Get('conversations/:jid')
   async conversations(
-    @Param('sessionId') sessionId: string,
+    @User('id') ownerId: string,
     @Param('jid') jid: string,
   ) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.getConversations({ sessionId, jid });
   }
 
-  @Post('conversations/:sessionId/:jid/mark-as-read')
+  @Post('conversations/:jid/mark-as-read')
   async markConversationAsRead(
-    @Param('sessionId') sessionId: string,
+    @User('id') ownerId: string,
     @Param('jid') jid: string,
   ) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.markConversationAsRead(sessionId, jid);
   }
 }

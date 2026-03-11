@@ -5,7 +5,6 @@ const PhoneRecipientSchema = z.string().min(6);
 
 export const BroadcastTextSchema = z
   .object({
-    sessionId: z.string().min(1),
     recipients: z.array(PhoneRecipientSchema).min(1).optional(),
     contactIds: z.array(z.string().min(1)).optional(),
     useAllContacts: z.boolean().optional().default(false),
@@ -27,11 +26,10 @@ export const BroadcastTextSchema = z
     }
   });
 
-export class BroadcastTextDto extends createZodDto(BroadcastTextSchema) {}
+export class BroadcastTextDto extends createZodDto(BroadcastTextSchema) { }
 
 export const BroadcastImageSchema = z
   .object({
-    sessionId: z.string().min(1),
     recipients: z.array(PhoneRecipientSchema).min(1).optional(),
     contactIds: z.array(z.string().min(1)).optional(),
     useAllContacts: z.boolean().optional().default(false),
@@ -61,4 +59,4 @@ export const BroadcastImageSchema = z
     }
   });
 
-export class BroadcastImageDto extends createZodDto(BroadcastImageSchema) {}
+export class BroadcastImageDto extends createZodDto(BroadcastImageSchema) { }
