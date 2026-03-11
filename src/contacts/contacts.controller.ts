@@ -26,6 +26,8 @@ import {
   UpdateEmailContactSchema,
   UpdateWhatsAppContactDto,
   UpdateWhatsAppContactSchema,
+  ImportGroupContactsDto,
+  ImportGroupContactsSchema,
 } from './dto';
 import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 
@@ -33,7 +35,7 @@ import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 @ApiBearerAuth()
 @Controller('contacts')
 export class ContactsController {
-  constructor(private readonly contactsService: ContactsService) {}
+  constructor(private readonly contactsService: ContactsService) { }
 
   @Post('import')
   @UseInterceptors(
@@ -109,6 +111,28 @@ export class ContactsController {
     payload: CreateWhatsAppContactDto,
   ) {
     return this.contactsService.createWhatsAppContact(ownerId, payload);
+  }
+
+  /**
+   * Import all phone-resolvable members of a WhatsApp group as contacts.
+   *
+   * POST /contacts/whatsapp/import-group
+   * Body: { sessionId: string, groupJid: string }
+   *
+   * Members with LID-only identities (no phone number exposed by WhatsApp)
+   * are counted but not saved — their JIDs are still returned in `details`.
+   */
+  @Post('whatsapp/import-group')
+  async importGroupMembers(
+    @User('id') ownerId: string,
+    @Body(new ZodValidationPipe(ImportGroupContactsSchema))
+    payload: ImportGroupContactsDto,
+  ) {
+    return this.contactsService.importGroupMembersAsContacts(
+      ownerId,
+      payload.sessionId,
+      payload.groupJid,
+    );
   }
 
   @Patch('whatsapp/:id')

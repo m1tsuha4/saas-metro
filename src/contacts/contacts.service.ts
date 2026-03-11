@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,6 +17,7 @@ import {
   UpdateEmailContactDto,
   UpdateWhatsAppContactDto,
 } from './dto';
+import { WaService } from 'src/wa/wa.service';
 
 type ImportSummary = {
   rows: number;
@@ -47,7 +50,11 @@ export class ContactsService {
     updatedAt: true,
   };
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => WaService))
+    private readonly waService: WaService,
+  ) { }
 
   async importFromExcel(ownerId: string, file: Express.Multer.File) {
     if (!file?.buffer) throw new BadRequestException('File buffer missing');
@@ -210,6 +217,79 @@ export class ContactsService {
       summary,
     };
   }
+
+  // ─── Import group members as WhatsApp contacts ──────────────────────────────
+
+  async importGroupMembersAsContacts(
+    ownerId: string,
+    sessionId: string,
+    groupJid: string,
+  ) {
+    // Fetch group members via WaService (reuses the existing getGroupMembers method)
+    const meta = await this.waService.getGroupMembers(sessionId, groupJid);
+
+    const summary = { imported: 0, updated: 0, skipped: 0, lidCount: 0 };
+    const details: Array<{
+      phone: string | null;
+      jid: string;
+      result: 'IMPORTED' | 'UPDATED' | 'SKIPPED' | 'LID';
+    }> = [];
+
+    for (const member of meta.members) {
+      // LID users — phone is unknown, cannot be saved as a contact
+      if (!member.phone || member.lid !== null) {
+        summary.lidCount++;
+        details.push({ phone: null, jid: member.jid, result: 'LID' });
+        continue;
+      }
+
+      const phone = member.phone; // e.g. '628123456789'
+
+      try {
+        const existing = await this.prisma.whatsAppContact.findUnique({
+          where: { ownerId_phone: { ownerId, phone } },
+          select: { id: true },
+        });
+
+        if (existing) {
+          await this.prisma.whatsAppContact.update({
+            where: { id: existing.id },
+            data: { source: 'GROUP_IMPORT', status: 'ACTIVE' },
+          });
+          summary.updated++;
+          details.push({ phone, jid: member.jid, result: 'UPDATED' });
+        } else {
+          await this.prisma.whatsAppContact.create({
+            data: {
+              ownerId,
+              phone,
+              name: null,        // WA group metadata does not expose display names
+              status: 'ACTIVE',
+              source: 'GROUP_IMPORT',
+            },
+          });
+          summary.imported++;
+          details.push({ phone, jid: member.jid, result: 'IMPORTED' });
+        }
+      } catch {
+        summary.skipped++;
+        details.push({ phone, jid: member.jid, result: 'SKIPPED' });
+      }
+    }
+
+    return {
+      groupJid: meta.groupJid,
+      groupSubject: meta.groupSubject,
+      totalMembers: meta.total,
+      summary,
+      ...(summary.lidCount > 0 && {
+        note: `${summary.lidCount} member(s) are LID-only accounts — their phone numbers are not accessible by WhatsApp.`,
+      }),
+      details,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async listContacts(ownerId: string) {
     const [emails, whatsapp] = await Promise.all([
