@@ -7,16 +7,22 @@ import {
   Patch,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { AiAgentService } from './ai-agent.service';
-import { ApiBody, ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
 import { AiKnowledgeService } from './ai-knowledge.service';
 import { KnowledgeFileType } from '@prisma/client';
+import { WaService } from 'src/wa/wa.service';
+import { JwtAuthGuard } from 'src/auth/guard/jwt-guard.auth';
+import { User } from 'src/common/decorators/user.decorator';
 
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 @Controller('ai')
 export class AiController {
   constructor(
@@ -24,10 +30,12 @@ export class AiController {
     private readonly aiAgentService: AiAgentService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly aiKnowledgeService: AiKnowledgeService,
+    private readonly waService: WaService,
   ) { }
 
-  @Get(':sessionId')
-  async getAgent(@Param('sessionId') sessionId: string) {
+  @Get()
+  async getAgent(@User('id') ownerId: string) {
+    const sessionId = await this.waService.getSessionByOwner(ownerId);
     return this.aiAgentService.getAgent(sessionId);
   }
 
@@ -35,8 +43,6 @@ export class AiController {
     schema: {
       type: 'object',
       properties: {
-        sessionId: { example: 'session-177675658669' },
-        ownerId: { example: 'cmlha0mid0000mezwjmb13x6j' },
         name: { example: 'mitsuha' },
         isEnabled: { example: true },
         systemPrompt: {
@@ -52,14 +58,14 @@ export class AiController {
   })
   @Post()
   async createAgent(
-    @Body('sessionId') sessionId: string,
-    @Body('ownerId') ownerId: string,
+    @User('id') ownerId: string,
     @Body('name') name: string,
     @Body('isEnabled') isEnabled: boolean,
     @Body('systemPrompt') systemPrompt: string,
     @Body('fallbackReply') fallbackReply: string,
     @Body('language') language: string,
   ) {
+    const sessionId = await this.waService.getSessionByOwner(ownerId);
     return this.aiAgentService.createAgent(
       sessionId,
       ownerId,

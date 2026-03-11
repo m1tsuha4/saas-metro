@@ -15,6 +15,7 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ContactsService } from './contacts.service';
+import { WaService } from 'src/wa/wa.service';
 import { JwtAuthGuard } from 'src/auth/guard/jwt-guard.auth';
 import { User } from 'src/common/decorators/user.decorator';
 import {
@@ -35,7 +36,10 @@ import { ZodValidationPipe } from 'src/common/pipes/zod-validation.pipe';
 @ApiBearerAuth()
 @Controller('contacts')
 export class ContactsController {
-  constructor(private readonly contactsService: ContactsService) { }
+  constructor(
+    private readonly contactsService: ContactsService,
+    private readonly waService: WaService,
+  ) { }
 
   @Post('import')
   @UseInterceptors(
@@ -117,10 +121,10 @@ export class ContactsController {
    * Import all phone-resolvable members of a WhatsApp group as contacts.
    *
    * POST /contacts/whatsapp/import-group
-   * Body: { sessionId: string, groupJid: string }
+   * Body: { groupJid: string }
    *
-   * Members with LID-only identities (no phone number exposed by WhatsApp)
-   * are counted but not saved — their JIDs are still returned in `details`.
+   * sessionId is resolved automatically from the JWT bearer token.
+   * Members with LID-only identities (no phone number) are counted but not saved.
    */
   @Post('whatsapp/import-group')
   async importGroupMembers(
@@ -128,9 +132,10 @@ export class ContactsController {
     @Body(new ZodValidationPipe(ImportGroupContactsSchema))
     payload: ImportGroupContactsDto,
   ) {
+    const sessionId = await this.waService.getSessionByOwner(ownerId);
     return this.contactsService.importGroupMembersAsContacts(
       ownerId,
-      payload.sessionId,
+      sessionId,
       payload.groupJid,
     );
   }
