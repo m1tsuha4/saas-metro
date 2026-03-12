@@ -232,18 +232,18 @@ export class ContactsService {
     const details: Array<{
       phone: string | null;
       jid: string;
-      result: 'IMPORTED' | 'UPDATED' | 'SKIPPED' | 'LID';
+      result: 'IMPORTED' | 'UPDATED' | 'SKIPPED';
+      isLid: boolean;
     }> = [];
 
     for (const member of meta.members) {
-      // LID users — phone is unknown, cannot be saved as a contact
-      if (!member.phone || member.lid !== null) {
-        summary.lidCount++;
-        details.push({ phone: null, jid: member.jid, result: 'LID' });
-        continue;
-      }
+      // If the member is LID-only or has no phone, use their JID as the contact phone
+      const isLid = member.lid !== null || !member.phone;
+      const phone = member.phone || member.jid;
 
-      const phone = member.phone; // e.g. '628123456789'
+      if (isLid) {
+        summary.lidCount++;
+      }
 
       try {
         const existing = await this.prisma.whatsAppContact.findUnique({
@@ -257,7 +257,7 @@ export class ContactsService {
             data: { source: 'GROUP_IMPORT', status: 'ACTIVE' },
           });
           summary.updated++;
-          details.push({ phone, jid: member.jid, result: 'UPDATED' });
+          details.push({ phone, jid: member.jid, result: 'UPDATED', isLid });
         } else {
           await this.prisma.whatsAppContact.create({
             data: {
@@ -269,11 +269,11 @@ export class ContactsService {
             },
           });
           summary.imported++;
-          details.push({ phone, jid: member.jid, result: 'IMPORTED' });
+          details.push({ phone, jid: member.jid, result: 'IMPORTED', isLid });
         }
       } catch {
         summary.skipped++;
-        details.push({ phone, jid: member.jid, result: 'SKIPPED' });
+        details.push({ phone, jid: member.jid, result: 'SKIPPED', isLid });
       }
     }
 
@@ -283,7 +283,7 @@ export class ContactsService {
       totalMembers: meta.total,
       summary,
       ...(summary.lidCount > 0 && {
-        note: `${summary.lidCount} member(s) are LID-only accounts — their phone numbers are not accessible by WhatsApp.`,
+        note: `${summary.lidCount} member(s) are LID-only accounts. They were imported using their hidden JID so you can still send messages to them.`,
       }),
       details,
     };
@@ -506,6 +506,7 @@ export class ContactsService {
   }
 
   private normalizePhone(input: string): string | null {
+    if (input.endsWith('@lid')) return input.trim();
     const digits = input.replace(/\D/g, '');
     if (digits.length < 6) return null;
     if (digits.startsWith('0')) {

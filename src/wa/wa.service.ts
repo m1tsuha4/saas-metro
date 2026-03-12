@@ -1194,6 +1194,7 @@ export class WaService implements OnModuleInit {
 
   private normalizePhoneInput(input?: string | null): string | null {
     if (!input) return null;
+    if (input.endsWith('@lid')) return input.trim();
     const digits = `${input}`.replace(/\D/g, '');
     if (digits.length < 6) return null;
     if (digits.startsWith('0')) {
