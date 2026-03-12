@@ -409,6 +409,12 @@ export class WaService implements OnModuleInit {
 
   /** Check if number has WhatsApp account */
   async checkNumber(sessionId: string, toPhoneE164: string) {
+    // LID JIDs cannot be checked via onWhatsApp, but they are guaranteed to exist 
+    // since they only come from WhatsApp's internal group metadata.
+    if (toPhoneE164.includes('@lid')) {
+      return { exists: true, jid: toPhoneE164 };
+    }
+
     const rt = await this.ensureConnected(sessionId);
 
     const jid = this.phoneToJid(toPhoneE164);
@@ -1204,6 +1210,7 @@ export class WaService implements OnModuleInit {
   }
 
   private phoneToJid(e164NoPlus: string) {
+    if (e164NoPlus.includes('@')) return e164NoPlus;
     const num = e164NoPlus.replace(/[^\d]/g, '');
     return `${num}@s.whatsapp.net`;
   }
