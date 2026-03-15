@@ -155,6 +155,12 @@ export class WaController {
     return data;
   }
 
+  @Get('campaigns')
+  async campaigns(@User('id') ownerId: string) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    return this.wa.getCampaigns(sessionId);
+  }
+
   @Get('list-conversations')
   async listConversations(@User('id') ownerId: string) {
     const sessionId = await this.wa.getSessionByOwner(ownerId);

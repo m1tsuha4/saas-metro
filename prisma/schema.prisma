@@ -107,15 +107,23 @@ model WhatsAppContact {
 }
 
 model WaCampaign {
-  id        String            @id @default(cuid())
-  sessionId String
-  type      String // TEXT | IMAGE
-  text      String?
-  imageUrl  String?
-  delayMs   Int               @default(1000) // jarak kirim
-  jitterMs  Int               @default(500) // +/- random
-  createdAt DateTime          @default(now())
-  messages  WhatsAppMessage[]
+  id                String            @id @default(cuid())
+  name              String?
+  sessionId         String
+  type              String // TEXT | IMAGE
+  text              String?
+  imageUrl          String?
+  delayMs           Int               @default(1000) // jarak kirim
+  jitterMs          Int               @default(500) // +/- random
+  isScheduled       Boolean           @default(false)
+  scheduleType      String            @default("SEND_NOW") // SEND_NOW | SCHEDULE_LATER
+  timetableRepeater String? // ONCE | EVERY_DAY | EVERY_WEEK | EVERY_MONTH
+  scheduledDate     DateTime?
+  scheduledTime     String?
+  status            String            @default("PENDING") // PENDING | ACTIVE | COMPLETED | PAUSED
+  recipients        Json?
+  createdAt         DateTime          @default(now())
+  messages          WhatsAppMessage[]
 
   @@map("wacampaign")
 }

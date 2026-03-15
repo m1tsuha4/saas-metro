@@ -33,6 +33,12 @@ type SessionRuntime = {
 };
 
 type BroadcastTextInput = {
+  name?: string;
+  isScheduled?: boolean;
+  scheduleType?: string;
+  timetableRepeater?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   recipients?: string[];
   contactIds?: string[];
   useAllContacts?: boolean;
@@ -43,6 +49,12 @@ type BroadcastTextInput = {
 };
 
 type BroadcastImageInput = {
+  name?: string;
+  isScheduled?: boolean;
+  scheduleType?: string;
+  timetableRepeater?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   recipients?: string[];
   contactIds?: string[];
   useAllContacts?: boolean;
@@ -86,25 +98,25 @@ export class WaService implements OnModuleInit {
     private crypto: CryptoService,
   ) { }
   async onModuleInit() {
-    // this.logger.log('Auto-reconnecting WhatsApp sessions...');
+    this.logger.log('Auto-reconnecting WhatsApp sessions...');
 
-    // const sessions = await this.prisma.whatsAppSession.findMany({
-    //   where: { connected: true },
-    // });
+    const sessions = await this.prisma.whatsAppSession.findMany({
+      where: { connected: true },
+    });
 
-    // for (const s of sessions) {
-    //   if (!s.ownerId) {
-    //     this.logger.warn(`Skipping session ${s.id} because ownerId is null`);
-    //     continue;
-    //   }
+    for (const s of sessions) {
+      if (!s.ownerId) {
+        this.logger.warn(`Skipping session ${s.id} because ownerId is null`);
+        continue;
+      }
 
-    //   try {
-    //     await this.connect(s.id, s.ownerId, s.label ?? undefined);
-    //     this.logger.log(`Auto-reconnected session ${s.id}`);
-    //   } catch (err: any) {
-    //     this.logger.error(`Failed to auto-reconnect ${s.id}: ${err.message}`);
-    //   }
-    // }
+      try {
+        await this.connect(s.id, s.ownerId, s.label ?? undefined);
+        this.logger.log(`Auto-reconnected session ${s.id}`);
+      } catch (err: any) {
+        this.logger.error(`Failed to auto-reconnect ${s.id}: ${err.message}`);
+      }
+    }
   }
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
@@ -407,6 +419,51 @@ export class WaService implements OnModuleInit {
     return { messageId, to: jid };
   }
 
+  /** Send image message */
+  async sendImage(sessionId: string, toPhoneOrJid: string, imageUrl: string, caption?: string) {
+    const rt = await this.ensureConnected(sessionId);
+    const jid = toPhoneOrJid.includes('@')
+      ? toPhoneOrJid
+      : this.phoneToJid(toPhoneOrJid);
+      
+    const imgBuf = await this.fetchImageBuffer(imageUrl);
+    const res = await rt.sock!.sendMessage(jid, {
+      image: imgBuf,
+      caption: caption || undefined,
+    });
+    
+    const messageId = res && res.key ? (res.key.id ?? null) : null;
+
+    if (messageId) {
+      await this.prisma.whatsAppMessage.upsert({
+        where: { messageId },
+        update: {},
+        create: {
+          sessionId,
+          phone: jid,
+          direction: 'OUTGOING',
+          messageId,
+          text: caption ?? null,
+          mediaUrl: imageUrl,
+          type: 'image',
+          status: 'SENT',
+        },
+      });
+
+      this.gateway.server.to(sessionId).emit('new-message', {
+        id: messageId,
+        sessionId,
+        jid,
+        text: caption || '[Image]',
+        type: 'image',
+        fromMe: true,
+        createdAt: new Date(),
+      });
+      this.gateway.server.to(sessionId).emit('conversation-updated', { sessionId, jid });
+    }
+    return { messageId, to: jid };
+  }
+
   /** Check if number has WhatsApp account */
   async checkNumber(sessionId: string, toPhoneE164: string) {
     // LID JIDs cannot be checked via onWhatsApp, but they are guaranteed to exist 
@@ -548,7 +605,7 @@ export class WaService implements OnModuleInit {
   }
 
   async broadcastText(ownerId: string, sessionId: string, dto: BroadcastTextInput) {
-    const { text, delayMs, jitterMs, checkNumber } = dto;
+    const { text, delayMs, jitterMs, checkNumber, isScheduled, scheduleType, timetableRepeater, scheduledDate, scheduledTime, name } = dto;
     const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
     if (!recipients.length) {
       throw new BadRequestException(
@@ -558,11 +615,38 @@ export class WaService implements OnModuleInit {
 
     await this.ensureConnected(sessionId);
 
-    // optional: create a campaign row
+    // If scheduled, save to db and return
+    if (isScheduled && scheduleType === 'SCHEDULE_LATER') {
+      const camp = await this.prisma.waCampaign.create({
+        data: {
+          sessionId,
+          name,
+          type: 'TEXT',
+          text,
+          delayMs,
+          jitterMs,
+          isScheduled,
+          scheduleType,
+          timetableRepeater,
+          scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+          scheduledTime,
+          status: 'ACTIVE',
+          recipients: JSON.stringify(recipients),
+        },
+      });
+      return {
+        campaignId: camp.id,
+        status: 'SCHEDULED',
+        total: recipients.length,
+        message: 'Campaign scheduled successfully.',
+      };
+    }
+
+    // optional: create a campaign row for SEND_NOW
     let campaignId: string | undefined;
     try {
       const camp = await this.prisma.waCampaign.create({
-        data: { sessionId, type: 'TEXT', text, delayMs, jitterMs },
+        data: { sessionId, name, type: 'TEXT', text, delayMs, jitterMs },
         select: { id: true },
       });
       campaignId = camp.id;
@@ -655,7 +739,7 @@ export class WaService implements OnModuleInit {
   }
 
   async broadcastImage(ownerId: string, sessionId: string, dto: BroadcastImageInput) {
-    const { caption, imageUrl, delayMs, jitterMs, checkNumber } = dto;
+    const { caption, imageUrl, delayMs, jitterMs, checkNumber, isScheduled, scheduleType, timetableRepeater, scheduledDate, scheduledTime, name } = dto;
     const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
     if (!recipients.length) {
       throw new BadRequestException(
@@ -664,6 +748,33 @@ export class WaService implements OnModuleInit {
     }
 
     const rt = await this.ensureConnected(sessionId);
+
+    if (isScheduled && scheduleType === 'SCHEDULE_LATER') {
+      const camp = await this.prisma.waCampaign.create({
+        data: {
+          sessionId,
+          name,
+          type: 'IMAGE',
+          imageUrl,
+          text: caption ?? null,
+          delayMs,
+          jitterMs,
+          isScheduled,
+          scheduleType,
+          timetableRepeater,
+          scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+          scheduledTime,
+          status: 'ACTIVE',
+          recipients: JSON.stringify(recipients),
+        },
+      });
+      return {
+        campaignId: camp.id,
+        status: 'SCHEDULED',
+        total: recipients.length,
+        message: 'Campaign scheduled successfully.',
+      };
+    }
 
     // prefetch the image once (to avoid downloading for every recipient)
     const imgBuf = await this.fetchImageBuffer(imageUrl);
@@ -674,6 +785,7 @@ export class WaService implements OnModuleInit {
       const camp = await this.prisma.waCampaign.create({
         data: {
           sessionId,
+          name,
           type: 'IMAGE',
           imageUrl,
           text: caption ?? null,
@@ -1360,6 +1472,58 @@ export class WaService implements OnModuleInit {
     this.logger.log(
       `Saved ${messageType} (${fromMe ? 'OUT' : 'IN'}) in ${remoteJid}`,
     );
+  }
+
+  async getCampaigns(sessionId: string) {
+    const campaigns = await this.prisma.waCampaign.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: {
+          select: { messages: true },
+        },
+        messages: {
+          select: { status: true },
+        },
+      },
+    });
+
+    return campaigns.map((c) => {
+      const sent = c.messages.filter((m) => m.status === 'SENT').length;
+      const failed = c.messages.filter((m) => m.status === 'FAILED').length;
+      const skipped = c.messages.filter((m) => m.status === 'SKIPPED').length;
+      const total = c._count.messages;
+
+      let displayRecipients = total;
+      if (c.recipients) {
+        try {
+          const parsed =
+            typeof c.recipients === 'string'
+              ? JSON.parse(c.recipients)
+              : c.recipients;
+          displayRecipients = Array.isArray(parsed) ? parsed.length : total;
+        } catch { }
+      }
+
+      return {
+        id: c.id,
+        name: c.name || c.type,
+        type: c.type,
+        scheduleType: c.scheduleType,
+        isScheduled: c.isScheduled,
+        status: c.status,
+        createdAt: c.createdAt,
+        scheduledDate: c.scheduledDate,
+        scheduledTime: c.scheduledTime,
+        timetableRepeater: c.timetableRepeater,
+        stats: {
+          total: displayRecipients > 0 ? displayRecipients : total,
+          sent,
+          failed,
+          skipped,
+        },
+      };
+    });
   }
 
   private async upsertConversation(params: {
