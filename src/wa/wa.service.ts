@@ -120,6 +120,23 @@ export class WaService implements OnModuleInit {
   }
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
+    // Check session limits first if this is a new session
+    const existingDb = await this.prisma.whatsAppSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true },
+    });
+
+    if (!existingDb) {
+      // Trying to connect a NEW session. Check how many this user has
+      const sessionCount = await this.prisma.whatsAppSession.count({
+        where: { ownerId },
+      });
+
+      if (sessionCount >= 1) {
+        throw new BadRequestException('You already have a WhatsApp session. Premium membership is required for multiple sessions.');
+      }
+    }
+
     // Singleton guard
     const existing = this.sessions.get(sessionId);
     if (existing?.connecting || existing?.sock) {

@@ -25,8 +25,17 @@ export class AiAgentService {
     fallbackReply: string,
     language: string,
   ) {
-    const agent = await this.prisma.aiAgent.create({
-      data: {
+    const agent = await this.prisma.aiAgent.upsert({
+      where: { sessionId },
+      update: {
+        ownerId,
+        name,
+        isEnabled,
+        systemPrompt,
+        fallbackReply,
+        language,
+      },
+      create: {
         sessionId,
         ownerId,
         name,
