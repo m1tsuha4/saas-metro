@@ -3,6 +3,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { AiProvider } from './providers/ai-provider.interface';
 import { Inject } from '@nestjs/common';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { KnowledgeFileType } from '@prisma/client';
 
 @Injectable()
 export class AiKnowledgeService {
@@ -18,14 +19,19 @@ export class AiKnowledgeService {
     });
   }
 
-  async processPdfBuffer(agentId: string, fileId: string, buffer: Buffer) {
+  async processPdfBuffer(
+    agentId: string,
+    fileId: string,
+    buffer: Buffer,
+    fileType: KnowledgeFileType = KnowledgeFileType.FAQ,
+  ) {
     try {
       // Extract text
       const text = await this.extractTextFromPdf(buffer);
 
       const chunks = this.chunkText(text);
 
-      //  Generate embeddings
+      // Generate embeddings, tag each chunk with the file type and fileId
       for (const chunk of chunks) {
         const embedding = await (this.aiProvider as any).generateEmbedding(
           chunk,
@@ -34,16 +40,18 @@ export class AiKnowledgeService {
         await this.prisma.aiEmbedding.create({
           data: {
             agentId,
+            fileId,
+            fileType,
             content: chunk,
             embedding,
           },
         });
       }
 
-      // Mark file READY
+      // Mark file READY and save its type
       await this.prisma.aiKnowledgeFile.update({
         where: { id: fileId },
-        data: { status: 'READY' },
+        data: { status: 'READY', fileType },
       });
     } catch (error) {
       await this.prisma.aiKnowledgeFile.update({
@@ -62,17 +70,29 @@ export class AiKnowledgeService {
     });
   }
 
+  /**
+   * Cosine-similarity RAG search.
+   * When `fileType` is provided, only embeddings of that type are searched.
+   * When `fileTypes` array is provided, embeddings matching any type are searched.
+   */
   async searchSimilarChunks(
     agentId: string,
     queryEmbedding: number[],
     limit = 5,
+    fileTypes?: KnowledgeFileType[],
   ) {
     const embeddings = await this.prisma.aiEmbedding.findMany({
-      where: { agentId },
+      where: {
+        agentId,
+        ...(fileTypes && fileTypes.length > 0
+          ? { fileType: { in: fileTypes } }
+          : {}),
+      },
     });
 
     const scored = embeddings.map((item) => ({
       content: item.content,
+      fileType: item.fileType,
       score: this.cosineSimilarity(queryEmbedding, item.embedding as number[]),
     }));
 
@@ -81,9 +101,14 @@ export class AiKnowledgeService {
     return scored.slice(0, limit);
   }
 
+  /**
+   * Deletes embeddings for a specific file only (scoped by fileId),
+   * then deletes the file record itself.
+   */
   async deleteKnowledge(agentId: string, fileId: string) {
+    // Only delete embeddings belonging to this specific file
     await this.prisma.aiEmbedding.deleteMany({
-      where: { agentId },
+      where: { agentId, fileId },
     });
 
     await this.prisma.aiKnowledgeFile.delete({

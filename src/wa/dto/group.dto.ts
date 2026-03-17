@@ -2,24 +2,21 @@ import { z } from 'zod';
 import { createZodDto } from '@anatine/zod-nestjs';
 
 export const GroupSendTextSchema = z.object({
-  sessionId: z.string().min(1),
   groupJid: z.string().min(10), // e.g. "1203630xxxxxxx@g.us"
   text: z.string().min(1),
 });
 
-export class GroupSendTextDto extends createZodDto(GroupSendTextSchema) {}
+export class GroupSendTextDto extends createZodDto(GroupSendTextSchema) { }
 
 export const GroupSendImageSchema = z.object({
-  sessionId: z.string().min(1),
   groupJid: z.string().min(10),
   imageUrl: z.string().url(),
   caption: z.string().optional(),
 });
 
-export class GroupSendImageDto extends createZodDto(GroupSendImageSchema) {}
+export class GroupSendImageDto extends createZodDto(GroupSendImageSchema) { }
 
 export const GroupDmMembersTextSchema = z.object({
-  sessionId: z.string().min(1),
   groupJid: z.string().min(10),
   text: z.string().min(1),
   delayMs: z.number().int().min(0).default(1500),
@@ -29,10 +26,9 @@ export const GroupDmMembersTextSchema = z.object({
 
 export class GroupDmMembersTextDto extends createZodDto(
   GroupDmMembersTextSchema,
-) {}
+) { }
 
 export const GroupDmMembersImageSchema = z.object({
-  sessionId: z.string().min(1),
   groupJid: z.string().min(10),
   imageUrl: z.string().url(),
   caption: z.string().optional(),
@@ -43,4 +39,4 @@ export const GroupDmMembersImageSchema = z.object({
 
 export class GroupDmMembersImageDto extends createZodDto(
   GroupDmMembersImageSchema,
-) {}
+) { }

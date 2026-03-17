@@ -20,6 +20,7 @@ import { WaGateway } from './wa.gateway';
 import { CloudinaryService } from 'src/common/services/cloudinary.service';
 import { AiService } from 'src/ai/ai.service';
 import { useDbAuthState } from './baileys-db-auth';
+import { CryptoService } from 'src/common/services/crypto.service';
 
 type SessionRuntime = {
   qr?: string;
@@ -32,7 +33,12 @@ type SessionRuntime = {
 };
 
 type BroadcastTextInput = {
-  sessionId: string;
+  name?: string;
+  isScheduled?: boolean;
+  scheduleType?: string;
+  timetableRepeater?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   recipients?: string[];
   contactIds?: string[];
   useAllContacts?: boolean;
@@ -43,7 +49,12 @@ type BroadcastTextInput = {
 };
 
 type BroadcastImageInput = {
-  sessionId: string;
+  name?: string;
+  isScheduled?: boolean;
+  scheduleType?: string;
+  timetableRepeater?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   recipients?: string[];
   contactIds?: string[];
   useAllContacts?: boolean;
@@ -84,6 +95,7 @@ export class WaService implements OnModuleInit {
     private gateway: WaGateway,
     private cloudinary: CloudinaryService,
     private aiService: AiService,
+    private crypto: CryptoService,
   ) { }
   async onModuleInit() {
     this.logger.log('Auto-reconnecting WhatsApp sessions...');
@@ -108,6 +120,23 @@ export class WaService implements OnModuleInit {
   }
   /** Create/(re)connect a session; returns QR (if needed) */
   async connect(sessionId: string, ownerId: string, label?: string) {
+    // Check session limits first if this is a new session
+    const existingDb = await this.prisma.whatsAppSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true },
+    });
+
+    if (!existingDb) {
+      // Trying to connect a NEW session. Check how many this user has
+      const sessionCount = await this.prisma.whatsAppSession.count({
+        where: { ownerId },
+      });
+
+      if (sessionCount >= 1) {
+        throw new BadRequestException('You already have a WhatsApp session. Premium membership is required for multiple sessions.');
+      }
+    }
+
     // Singleton guard
     const existing = this.sessions.get(sessionId);
     if (existing?.connecting || existing?.sock) {
@@ -308,6 +337,20 @@ export class WaService implements OnModuleInit {
     return { sessionId, ...result };
   }
 
+  /** Resolve the active WhatsApp session ID for a given owner */
+  async getSessionByOwner(ownerId: string): Promise<string> {
+    const session = await this.prisma.whatsAppSession.findFirst({
+      where: { ownerId, connected: true },
+      select: { id: true },
+    });
+    if (!session) {
+      throw new NotFoundException(
+        'No active WhatsApp session found. Please connect first.',
+      );
+    }
+    return session.id;
+  }
+
   /** List all sessions from database */
   async listSessions(ownerId: string) {
     const sessions = await this.prisma.whatsAppSession.findMany({
@@ -358,7 +401,7 @@ export class WaService implements OnModuleInit {
           phone: jid,
           direction: 'OUTGOING',
           messageId,
-          text,
+          text: this.crypto.encrypt(text),
           type: 'conversation',
           status: 'SENT',
         },
@@ -393,8 +436,59 @@ export class WaService implements OnModuleInit {
     return { messageId, to: jid };
   }
 
+  /** Send image message */
+  async sendImage(sessionId: string, toPhoneOrJid: string, imageUrl: string, caption?: string) {
+    const rt = await this.ensureConnected(sessionId);
+    const jid = toPhoneOrJid.includes('@')
+      ? toPhoneOrJid
+      : this.phoneToJid(toPhoneOrJid);
+      
+    const imgBuf = await this.fetchImageBuffer(imageUrl);
+    const res = await rt.sock!.sendMessage(jid, {
+      image: imgBuf,
+      caption: caption || undefined,
+    });
+    
+    const messageId = res && res.key ? (res.key.id ?? null) : null;
+
+    if (messageId) {
+      await this.prisma.whatsAppMessage.upsert({
+        where: { messageId },
+        update: {},
+        create: {
+          sessionId,
+          phone: jid,
+          direction: 'OUTGOING',
+          messageId,
+          text: caption ?? null,
+          mediaUrl: imageUrl,
+          type: 'image',
+          status: 'SENT',
+        },
+      });
+
+      this.gateway.server.to(sessionId).emit('new-message', {
+        id: messageId,
+        sessionId,
+        jid,
+        text: caption || '[Image]',
+        type: 'image',
+        fromMe: true,
+        createdAt: new Date(),
+      });
+      this.gateway.server.to(sessionId).emit('conversation-updated', { sessionId, jid });
+    }
+    return { messageId, to: jid };
+  }
+
   /** Check if number has WhatsApp account */
   async checkNumber(sessionId: string, toPhoneE164: string) {
+    // LID JIDs cannot be checked via onWhatsApp, but they are guaranteed to exist 
+    // since they only come from WhatsApp's internal group metadata.
+    if (toPhoneE164.includes('@lid')) {
+      return { exists: true, jid: toPhoneE164 };
+    }
+
     const rt = await this.ensureConnected(sessionId);
 
     const jid = this.phoneToJid(toPhoneE164);
@@ -527,8 +621,8 @@ export class WaService implements OnModuleInit {
     return { success: true, requireQr: true };
   }
 
-  async broadcastText(ownerId: string, dto: BroadcastTextInput) {
-    const { sessionId, text, delayMs, jitterMs, checkNumber } = dto;
+  async broadcastText(ownerId: string, sessionId: string, dto: BroadcastTextInput) {
+    const { text, delayMs, jitterMs, checkNumber, isScheduled, scheduleType, timetableRepeater, scheduledDate, scheduledTime, name } = dto;
     const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
     if (!recipients.length) {
       throw new BadRequestException(
@@ -538,11 +632,38 @@ export class WaService implements OnModuleInit {
 
     await this.ensureConnected(sessionId);
 
-    // optional: create a campaign row
+    // If scheduled, save to db and return
+    if (isScheduled && scheduleType === 'SCHEDULE_LATER') {
+      const camp = await this.prisma.waCampaign.create({
+        data: {
+          sessionId,
+          name,
+          type: 'TEXT',
+          text,
+          delayMs,
+          jitterMs,
+          isScheduled,
+          scheduleType,
+          timetableRepeater,
+          scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+          scheduledTime,
+          status: 'ACTIVE',
+          recipients: JSON.stringify(recipients),
+        },
+      });
+      return {
+        campaignId: camp.id,
+        status: 'SCHEDULED',
+        total: recipients.length,
+        message: 'Campaign scheduled successfully.',
+      };
+    }
+
+    // optional: create a campaign row for SEND_NOW
     let campaignId: string | undefined;
     try {
       const camp = await this.prisma.waCampaign.create({
-        data: { sessionId, type: 'TEXT', text, delayMs, jitterMs },
+        data: { sessionId, name, type: 'TEXT', text, delayMs, jitterMs },
         select: { id: true },
       });
       campaignId = camp.id;
@@ -576,7 +697,7 @@ export class WaService implements OnModuleInit {
                   sessionId,
                   campaignId,
                   direction: 'OUTGOING',
-                  text,
+                  text: this.crypto.encrypt(text),
                   status: 'FAILED',
                   errorMessage: 'Not on WhatsApp',
                 },
@@ -597,7 +718,7 @@ export class WaService implements OnModuleInit {
               sessionId,
               campaignId,
               direction: 'OUTGOING',
-              text,
+              text: this.crypto.encrypt(text),
               status: 'SENT',
             },
           })
@@ -615,7 +736,7 @@ export class WaService implements OnModuleInit {
               sessionId,
               campaignId,
               direction: 'OUTGOING',
-              text,
+              text: this.crypto.encrypt(text),
               status: 'FAILED',
               errorMessage: msg,
             },
@@ -634,9 +755,8 @@ export class WaService implements OnModuleInit {
     };
   }
 
-  async broadcastImage(ownerId: string, dto: BroadcastImageInput) {
-    const { sessionId, caption, imageUrl, delayMs, jitterMs, checkNumber } =
-      dto;
+  async broadcastImage(ownerId: string, sessionId: string, dto: BroadcastImageInput) {
+    const { caption, imageUrl, delayMs, jitterMs, checkNumber, isScheduled, scheduleType, timetableRepeater, scheduledDate, scheduledTime, name } = dto;
     const recipients = await this.resolveWhatsAppRecipients(ownerId, dto);
     if (!recipients.length) {
       throw new BadRequestException(
@@ -645,6 +765,33 @@ export class WaService implements OnModuleInit {
     }
 
     const rt = await this.ensureConnected(sessionId);
+
+    if (isScheduled && scheduleType === 'SCHEDULE_LATER') {
+      const camp = await this.prisma.waCampaign.create({
+        data: {
+          sessionId,
+          name,
+          type: 'IMAGE',
+          imageUrl,
+          text: caption ?? null,
+          delayMs,
+          jitterMs,
+          isScheduled,
+          scheduleType,
+          timetableRepeater,
+          scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+          scheduledTime,
+          status: 'ACTIVE',
+          recipients: JSON.stringify(recipients),
+        },
+      });
+      return {
+        campaignId: camp.id,
+        status: 'SCHEDULED',
+        total: recipients.length,
+        message: 'Campaign scheduled successfully.',
+      };
+    }
 
     // prefetch the image once (to avoid downloading for every recipient)
     const imgBuf = await this.fetchImageBuffer(imageUrl);
@@ -655,6 +802,7 @@ export class WaService implements OnModuleInit {
       const camp = await this.prisma.waCampaign.create({
         data: {
           sessionId,
+          name,
           type: 'IMAGE',
           imageUrl,
           text: caption ?? null,
@@ -757,25 +905,22 @@ export class WaService implements OnModuleInit {
   }
 
   // 1) Send into a group chat (text)
-  public async groupSendText(dto: {
-    sessionId: string;
-    groupJid: string;
-    text: string;
-  }) {
-    const rt = await this.ensureConnected(dto.sessionId);
+  public async groupSendText(
+    sessionId: string,
+    dto: { groupJid: string; text: string },
+  ) {
+    const rt = await this.ensureConnected(sessionId);
 
     const res = await rt.sock.sendMessage(dto.groupJid, { text: dto.text });
     return { groupJid: dto.groupJid, messageId: res?.key?.id ?? null };
   }
 
   // 2) Send into a group chat (image+caption)
-  public async groupSendImage(dto: {
-    sessionId: string;
-    groupJid: string;
-    imageUrl: string;
-    caption?: string;
-  }) {
-    const rt = await this.ensureConnected(dto.sessionId);
+  public async groupSendImage(
+    sessionId: string,
+    dto: { groupJid: string; imageUrl: string; caption?: string },
+  ) {
+    const rt = await this.ensureConnected(sessionId);
 
     const img = await this.fetchImageBuffer(dto.imageUrl);
     const res = await rt.sock.sendMessage(dto.groupJid, {
@@ -826,16 +971,17 @@ export class WaService implements OnModuleInit {
   }
 
   // 3) DM every member (text)
-  public async groupDmMembersText(dto: {
-    sessionId: string;
-    groupJid: string;
-    text: string;
-    delayMs?: number;
-    jitterMs?: number;
-    includeAdmins?: boolean;
-  }) {
+  public async groupDmMembersText(
+    sessionId: string,
+    dto: {
+      groupJid: string;
+      text: string;
+      delayMs?: number;
+      jitterMs?: number;
+      includeAdmins?: boolean;
+    },
+  ) {
     const {
-      sessionId,
       groupJid,
       text,
       delayMs = 1500,
@@ -906,17 +1052,18 @@ export class WaService implements OnModuleInit {
   }
 
   // 4) DM every member (image)
-  public async groupDmMembersImage(dto: {
-    sessionId: string;
-    groupJid: string;
-    imageUrl: string;
-    caption?: string;
-    delayMs?: number;
-    jitterMs?: number;
-    includeAdmins?: boolean;
-  }) {
+  public async groupDmMembersImage(
+    sessionId: string,
+    dto: {
+      groupJid: string;
+      imageUrl: string;
+      caption?: string;
+      delayMs?: number;
+      jitterMs?: number;
+      includeAdmins?: boolean;
+    },
+  ) {
     const {
-      sessionId,
       groupJid,
       imageUrl,
       caption,
@@ -1086,8 +1233,11 @@ export class WaService implements OnModuleInit {
       }),
     });
 
-    // Reverse so FE gets oldest→newest (chronological) order
-    return messages.reverse();
+    // Reverse so FE gets oldest→newest (chronological) order, then decrypt text
+    return messages.reverse().map((m) => ({
+      ...m,
+      text: this.crypto.decrypt(m.text),
+    }));
   }
 
   public async markConversationAsRead(sessionId: string, jid: string) {
@@ -1179,6 +1329,7 @@ export class WaService implements OnModuleInit {
 
   private normalizePhoneInput(input?: string | null): string | null {
     if (!input) return null;
+    if (input.endsWith('@lid')) return input.trim();
     const digits = `${input}`.replace(/\D/g, '');
     if (digits.length < 6) return null;
     if (digits.startsWith('0')) {
@@ -1188,6 +1339,7 @@ export class WaService implements OnModuleInit {
   }
 
   private phoneToJid(e164NoPlus: string) {
+    if (e164NoPlus.includes('@')) return e164NoPlus;
     const num = e164NoPlus.replace(/[^\d]/g, '');
     return `${num}@s.whatsapp.net`;
   }
@@ -1282,7 +1434,7 @@ export class WaService implements OnModuleInit {
         phone: remoteJid,
         direction: fromMe ? 'OUTGOING' : 'INCOMING',
         messageId,
-        text,
+        text: this.crypto.encrypt(text),
         type: messageType,
         mediaUrl,
         rawJson: msg,
@@ -1339,6 +1491,58 @@ export class WaService implements OnModuleInit {
     );
   }
 
+  async getCampaigns(sessionId: string) {
+    const campaigns = await this.prisma.waCampaign.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: {
+          select: { messages: true },
+        },
+        messages: {
+          select: { status: true },
+        },
+      },
+    });
+
+    return campaigns.map((c) => {
+      const sent = c.messages.filter((m) => m.status === 'SENT').length;
+      const failed = c.messages.filter((m) => m.status === 'FAILED').length;
+      const skipped = c.messages.filter((m) => m.status === 'SKIPPED').length;
+      const total = c._count.messages;
+
+      let displayRecipients = total;
+      if (c.recipients) {
+        try {
+          const parsed =
+            typeof c.recipients === 'string'
+              ? JSON.parse(c.recipients)
+              : c.recipients;
+          displayRecipients = Array.isArray(parsed) ? parsed.length : total;
+        } catch { }
+      }
+
+      return {
+        id: c.id,
+        name: c.name || c.type,
+        type: c.type,
+        scheduleType: c.scheduleType,
+        isScheduled: c.isScheduled,
+        status: c.status,
+        createdAt: c.createdAt,
+        scheduledDate: c.scheduledDate,
+        scheduledTime: c.scheduledTime,
+        timetableRepeater: c.timetableRepeater,
+        stats: {
+          total: displayRecipients > 0 ? displayRecipients : total,
+          sent,
+          failed,
+          skipped,
+        },
+      };
+    });
+  }
+
   private async upsertConversation(params: {
     sessionId: string;
     jid: string;
@@ -1360,7 +1564,7 @@ export class WaService implements OnModuleInit {
       },
       update: {
         lastMessageId: messageId,
-        lastMessageText: text,
+        lastMessageText: this.crypto.encrypt(text),
         lastMessageType: messageType,
         lastMessageAt: new Date(),
         unreadCount: fromMe
@@ -1374,7 +1578,7 @@ export class WaService implements OnModuleInit {
         name: name ?? null,
         isGroup: jid.endsWith('@g.us'),
         lastMessageId: messageId,
-        lastMessageText: text,
+        lastMessageText: this.crypto.encrypt(text),
         lastMessageType: messageType,
         lastMessageAt: new Date(),
         unreadCount: fromMe ? 0 : 1,
