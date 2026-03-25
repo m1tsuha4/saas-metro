@@ -33,6 +33,13 @@ export class AiService {
     if (!agent || !agent.isEnabled) return null;
     if (agent.mode === 'HUMAN') return null;
 
+    // Check conversation explicitly
+    const conversation = await this.prisma.whatsAppConversation.findUnique({
+      where: { sessionId_jid: { sessionId, jid } },
+    });
+
+    if (conversation?.aiMode === 'HUMAN') return null;
+
     // ─── Detect Intent ───────────────────────────────────────────────────────
     const intentRaw = await this.aiProvider.generateReply({
       systemPrompt: `
@@ -43,6 +50,7 @@ Classify the user's message into EXACTLY ONE of these categories:
 - PRODUCT_QUESTION  → Asking about products, services, or the company
 - PRICE_QUESTION    → Asking about prices, costs, packages, or payment
 - FAQ_QUESTION      → Asking about policies, process, how-to, or general questions
+- SPEAK_TO_ADMIN    → The user wants to chat with a human, admin, customer service, or real person.
 - SMALL_TALK        → Casual conversation not about the business
 - OUT_OF_CONTEXT    → Completely off-topic (politics, celebrities, general world knowledge, etc.)
 
@@ -64,6 +72,17 @@ Respond with ONLY the category name, nothing else.
         'Maaf, saya hanya bisa menjawab pertanyaan seputar bisnis kami. Silakan hubungi admin untuk informasi lainnya.';
       await this.saveMemory(agent.id, jid, message, fallback);
       return fallback;
+    }
+
+    // ─── Speak to Admin: switch conversation to HUMAN mode ────────────────────
+    if (intent === 'SPEAK_TO_ADMIN') {
+      await this.prisma.whatsAppConversation.updateMany({
+        where: { sessionId, jid },
+        data: { aiMode: 'HUMAN' },
+      });
+      const reply = 'Baik, pertanyaan Anda akan saya teruskan ke Customer Service. Mohon tunggu sebentar ya!';
+      await this.saveMemory(agent.id, jid, message, reply);
+      return reply;
     }
 
     // ─── Load Conversation Memory ─────────────────────────────────────────────

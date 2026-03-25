@@ -184,4 +184,14 @@ export class WaController {
     const sessionId = await this.wa.getSessionByOwner(ownerId);
     return this.wa.markConversationAsRead(sessionId, jid);
   }
+
+  @Post('conversations/:jid/mode')
+  async toggleConversationMode(
+    @User('id') ownerId: string,
+    @Param('jid') jid: string,
+    @Body() body: { mode: 'BOT' | 'HUMAN' },
+  ) {
+    const sessionId = await this.wa.getSessionByOwner(ownerId);
+    return this.wa.toggleConversationAiMode(sessionId, jid, body.mode);
+  }
 }

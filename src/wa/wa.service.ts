@@ -1261,6 +1261,26 @@ export class WaService implements OnModuleInit {
     return { success: true };
   }
 
+  public async toggleConversationAiMode(sessionId: string, jid: string, mode: 'BOT' | 'HUMAN') {
+    // Support comma-separated JIDs for merged conversations
+    const jids = jid
+      .split(',')
+      .map((j) => j.trim())
+      .filter(Boolean);
+
+    await this.prisma.whatsAppConversation.updateMany({
+      where: {
+        sessionId,
+        jid: jids.length > 1 ? { in: jids } : jids[0],
+      },
+      data: {
+        aiMode: mode,
+      },
+    });
+
+    return { success: true, mode };
+  }
+
   // small helpers you can place near top/bottom:
   private sleep(ms: number) {
     return new Promise((res) => setTimeout(res, ms));
