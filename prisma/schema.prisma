@@ -321,6 +321,7 @@ model WhatsAppConversation {
   lastMessageType String?
   lastMessageAt   DateTime?
   unreadCount     Int       @default(0)
+  aiMode          AiMode    @default(BOT)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

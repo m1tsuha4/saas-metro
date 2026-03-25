@@ -72,6 +72,9 @@ export class UserController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     const pictureUrl = file ? `/uploads/avatars/${file.filename}` : undefined;
+    if (updateUserDto.telephone?.startsWith('08')) {
+      updateUserDto.telephone = '62' + updateUserDto.telephone.slice(1);
+    }
     return this.userService.updateUser(id, updateUserDto, pictureUrl);
   }
 
