@@ -1,66 +1,94 @@
 import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Param, 
-  Delete, 
-  Patch, 
-  Query, 
-  UsePipes 
+  Controller, Get, Post, Body, Param, Delete, Patch, Query, UsePipes, 
+  UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator, BadRequestException
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { TestimonialsService } from './testimonials.service';
 import { CreateTestimonialDto } from './dto/create-testimonial.dto';
+import { UpdateTestimonialDto } from './dto/update-testimonial.dto';
 import { ZodValidationPipe } from '@anatine/zod-nestjs';
 import { TestimonialStatus } from '@prisma/client';
 
-@Controller('cms/testimonials')
-@UsePipes(ZodValidationPipe) // Penting: Biar Zod nge-validasi Body otomatis
+
+const avatarFolder = './uploads/avatars';
+if (!existsSync(avatarFolder)) {
+  mkdirSync(avatarFolder, { recursive: true });
+}
+
+const avatarFileFilter = (_req, file, cb) => {
+  const ok = /^image\/(png|jpe?g|webp)$/i.test(file.mimetype);
+  cb(ok ? null : new BadRequestException('Only image files are allowed (png, jpg, jpeg, webp)'), ok);
+};
+
+const avatarStorage = diskStorage({
+  destination: avatarFolder,
+  filename: (_req, file, cb) => {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, `avatar-${unique}${extname(file.originalname).toLowerCase()}`);
+  },
+});
+
+@Controller('admin/testimonials')
+@UsePipes(ZodValidationPipe)
 export class TestimonialsController {
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
-  // Buat testimonial baru (dari Modal di Figma)
   @Post()
-  create(@Body() dto: CreateTestimonialDto) {
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: avatarStorage,
+      fileFilter: avatarFileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    }),
+  )
+  async create(
+    @Body() dto: CreateTestimonialDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (file) dto.avatarUrl = `/uploads/avatars/${file.filename}`;
     return this.testimonialsService.create(dto);
   }
 
-  // Ambil semua data (untuk tabel Admin)
-  @Get()
-  findAll() {
-    return this.testimonialsService.findAll();
-  }
-
-  // Ambil data statistik (untuk kotak-kotak di atas & grafik)
-  @Get('stats')
-  getStats() {
-    return this.testimonialsService.getStats();
-  }
-
-  // Khusus untuk Landing Page (dengan filter & limit)
-  @Get('landing')
-  getLanding(
-    @Query('limit') limit: string, 
-    @Query('minRating') minRating: string
+  @Patch(':id')
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: avatarStorage,
+      fileFilter: avatarFileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTestimonialDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
+    if (file) dto.avatarUrl = `/uploads/avatars/${file.filename}`;
+    
+    return this.testimonialsService.update(id, dto);
+  }
+
+  @Get()
+  findAll() { return this.testimonialsService.findAll(); }
+
+  @Get('stats')
+  getStats() { return this.testimonialsService.getStats(); }
+
+  @Get('landing')
+  getLanding(@Query('limit') limit?: string, @Query('minRating') minRating?: string) {
     return this.testimonialsService.getForLandingPage(
-      limit ? parseInt(limit) : 6,
-      minRating ? parseInt(minRating) : 4,
+        limit ? parseInt(limit) : 6, 
+        minRating ? parseInt(minRating) : 4
     );
   }
 
-  // Update status (misal dari PENDING ke PUBLISHED)
   @Patch(':id/status')
-  updateStatus(
-    @Param('id') id: string, 
-    @Body('status') status: TestimonialStatus
-  ) {
-    return this.testimonialsService.updateStatus(id, status);
+  updateStatus(@Param('id') id: string, @Body('status') status: TestimonialStatus) {
+    return this.testimonialsService.update(id, { status });
   }
 
-  // Hapus testimonial (tombol tempat sampah di Figma)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.testimonialsService.remove(id);
-  }
+  remove(@Param('id') id: string) { return this.testimonialsService.remove(id); }
 }

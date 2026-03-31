@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TestimonialsService } from './testimonials.service';
 import { TestimonialsController } from './testimonials.controller';
-import { PrismaService } from 'src/prisma/prisma.service'; // Sesuaikan path prisma lo
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Module({
   controllers: [TestimonialsController],
   providers: [TestimonialsService, PrismaService],
-  exports: [TestimonialsService], // Export kalo mau dipake di modul lain (misal LandingModule)
+  exports: [TestimonialsService], 
 })
 export class TestimonialsModule {}

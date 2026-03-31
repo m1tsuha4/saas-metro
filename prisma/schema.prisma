@@ -247,6 +247,31 @@ model PackageList {
   @@map("package_list")
 }
 
+enum TestimonialStatus {
+  PUBLISHED
+  PENDING
+  ARCHIVED
+}
+
+model Testimonial {
+  id           String            @id @default(cuid())
+  customerName String
+  businessName String
+  businessType String
+  location     String?
+  rating       Int               @default(5)
+  quote        String            @db.Text
+  avatarUrl    String?           
+  status       TestimonialStatus @default(PENDING)
+  
+  isFeatured   Boolean           @default(false) 
+  
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@map("testimonial")
+}
+
 model Subscription {
   id        String   @id @default(cuid())
   userId    String

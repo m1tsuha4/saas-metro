@@ -1,82 +1,94 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service'; // Pastiin path ke prisma service lo bener
+import { PrismaService } from 'src/prisma/prisma.service'; 
 import { CreateTestimonialDto } from './dto/create-testimonial.dto';
+import { UpdateTestimonialDto } from './dto/update-testimonial.dto';
+import { TestimonialStatus } from '@prisma/client';
 
 @Injectable()
 export class TestimonialsService {
   constructor(private prisma: PrismaService) {}
 
-  // 1. Simpan testimoni baru
   async create(dto: CreateTestimonialDto) {
     return this.prisma.testimonial.create({
       data: dto,
     });
   }
 
-  // 2. Ambil semua data buat tabel di Dashboard Admin
   async findAll() {
     return this.prisma.testimonial.findMany({
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  // 3. Logic untuk kotak statistik & bar distribusi rating (Figma image_2fb9da)
+  async update(id: string, dto: UpdateTestimonialDto) {
+    const exists = await this.prisma.testimonial.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException('Testimonial not found');
+
+    return this.prisma.testimonial.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
   async getStats() {
-    // Ambil agregasi untuk total dan rata-rata rating
     const aggregate = await this.prisma.testimonial.aggregate({
       _count: { id: true },
       _avg: { rating: true },
     });
 
-    // Hitung per status
     const publishedCount = await this.prisma.testimonial.count({
-      where: { status: 'PUBLISHED' },
+      where: { status: TestimonialStatus.PUBLISHED }, 
     });
 
     const pendingCount = await this.prisma.testimonial.count({
-      where: { status: 'PENDING' },
+      where: { status: TestimonialStatus.PENDING },
     });
 
-    // Grouping buat bar kuning (Rating Distribution) di Figma
+    const archivedCount = await this.prisma.testimonial.count({
+      where: { status: TestimonialStatus.ARCHIVED },
+    });
+
     const distribution = await this.prisma.testimonial.groupBy({
       by: ['rating'],
       _count: { rating: true },
+      orderBy: { rating: 'desc' },
     });
 
     return {
       total: aggregate._count.id,
       published: publishedCount,
       pending: pendingCount,
-      averageRating: aggregate._avg.rating ? parseFloat(aggregate._avg.rating.toFixed(1)) : 0,
+      archived: archivedCount,
+      averageRating: aggregate._avg.rating ? Number(aggregate._avg.rating.toFixed(1)) : 0,
       ratingDistribution: distribution,
     };
   }
 
-  // 4. Logic Landing Page: Sesuai "Landing Page Settings" di Figma
   async getForLandingPage(limit: number = 6, minRating: number = 4) {
     return this.prisma.testimonial.findMany({
       where: {
-        status: 'PUBLISHED',
-        isFeatured: true, // Hanya yang dipilih admin via toggle
-        rating: { gte: minRating }, // Filter rating minimal
+        status: TestimonialStatus.PUBLISHED,
+        isFeatured: true, 
+        rating: { gte: minRating }, 
       },
-      take: limit, // Maksimal yang tampil (Max Visible on Page)
+      take: limit, 
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  // 5. Update Status (buat tombol Publish/Archive di tabel)
-  async updateStatus(id: string, status: any) {
+  async updateStatus(id: string, status: TestimonialStatus) {
+    const exists = await this.prisma.testimonial.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException('Testimonial not found');
+
     return this.prisma.testimonial.update({
       where: { id },
       data: { status },
     });
   }
 
-  // 6. Hapus Testimoni
   async remove(id: string) {
     const exists = await this.prisma.testimonial.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('Testimonial tidak ditemukan');
+    if (!exists) throw new NotFoundException('Testimonial not found');
     
     return this.prisma.testimonial.delete({ where: { id } });
   }
