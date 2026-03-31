@@ -86,6 +86,32 @@ export class PaymentService {
       throw new NotFoundException('Package not found or inactive');
     }
 
+    // Check for existing pending payment to resume
+    const existingPayment = await this.prisma.payment.findFirst({
+      where: {
+        userId,
+        packageId: pkg.id,
+        status: 'PENDING',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // If there's an existing pending payment with a snap token, return it
+    if (existingPayment && existingPayment.snapToken) {
+      return {
+        success: true,
+        orderId: existingPayment.orderId,
+        token: existingPayment.snapToken,
+        redirectUrl: existingPayment.snapUrl,
+        payment: {
+          id: existingPayment.id,
+          amount: existingPayment.amount,
+          currency: existingPayment.currency,
+          status: existingPayment.status,
+        },
+      };
+    }
+
     // Generate unique order ID
     const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`;
 

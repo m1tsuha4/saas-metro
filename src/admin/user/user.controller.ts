@@ -13,6 +13,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { UserService } from './user.service';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { CreateAdminDto, CreateAdminSchema } from './dto/create-admin.dto';
 import { CreateAdminUserDto, CreateUserSchema } from './dto/create-user.dto';
 import { UpdateAdminUserDto, UpdateUserSchema } from './dto/update-user.dto';
@@ -23,6 +24,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 
+@ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
