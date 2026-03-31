@@ -13,6 +13,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { UserService } from './user.service';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { CreateAdminDto, CreateAdminSchema } from './dto/create-admin.dto';
 import { CreateAdminUserDto, CreateUserSchema } from './dto/create-user.dto';
 import { UpdateAdminUserDto, UpdateUserSchema } from './dto/update-user.dto';
