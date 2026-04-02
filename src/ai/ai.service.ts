@@ -71,6 +71,10 @@ Respond with ONLY the category name, nothing else.
         agent.fallbackReply ??
         'Maaf, saya hanya bisa menjawab pertanyaan seputar bisnis kami. Silakan hubungi admin untuk informasi lainnya.';
       await this.saveMemory(agent.id, jid, message, fallback);
+      await this.prisma.whatsAppConversation.updateMany({
+        where: { sessionId, jid },
+        data: { aiMode: 'HUMAN' },
+      });
       return fallback;
     }
 
