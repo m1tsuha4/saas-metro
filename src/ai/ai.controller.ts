@@ -115,7 +115,9 @@ export class AiController {
     },
   })
   @Post(':agentId/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', {
+      limits: { fileSize: 20 * 1024 * 1024 }, // 20MB limit
+  }))
   async uploadKnowledge(
     @Param('agentId') agentId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -126,30 +128,31 @@ export class AiController {
       (fileTypeRaw as KnowledgeFileType) ?? KnowledgeFileType.FAQ;
 
     const fileName = file.originalname;
-    const fileRecord = await this.aiService.uploadKnowledge(
-      agentId,
-      fileName,
-      'TEMP_URL',
-      'PROCESSING',
-      fileType,
-    );
-    await this.aiKnowledgeService.processPdfBuffer(
-      agentId,
-      fileRecord.id,
-      file.buffer,
-      fileType,
-    );
-
+    // 1. upload first (fast)
     const uploaded = await this.cloudinaryService.uploadPdf(
       file.buffer,
       `${Date.now()}-${file.originalname}`,
     );
 
-    await this.aiKnowledgeService.updateFileUrl(
-      fileRecord.id,
+    // 2. save DB
+    const fileRecord = await this.aiService.uploadKnowledge(
+      agentId,
+      file.originalname,
       uploaded.secure_url,
+      'PROCESSING',
+      fileType,
     );
 
+    // 3. process in background
+    setImmediate(() => {
+      this.aiKnowledgeService.processPdfBuffer(
+        agentId,
+        fileRecord.id,
+        file.buffer,
+        fileType,
+      );
+    });
+    
     return { success: true, fileType };
   }
 
