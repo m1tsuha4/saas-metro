@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { WaService } from './wa.service';
 import { parse } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 @Injectable()
 export class WaScheduler {
@@ -13,7 +14,7 @@ export class WaScheduler {
     private waService: WaService,
   ) {}
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_MINUTE, { timeZone: 'Asia/Jakarta' })
   async handleScheduledCampaigns() {
     this.logger.debug('Running campaign scheduler check...');
     
@@ -25,7 +26,7 @@ export class WaScheduler {
       },
     });
 
-    const now = new Date();
+    const now = toZonedTime(new Date(), 'Asia/Jakarta');
     // Use local timezone mapping for comparisons. In production, consider standardizing on UTC.
     const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     
@@ -61,7 +62,7 @@ export class WaScheduler {
     switch (campaign.timetableRepeater) {
       case 'ONCE':
         if (!campaign.scheduledDate) return false;
-        const scheduledDate = new Date(campaign.scheduledDate);
+        const scheduledDate = toZonedTime(new Date(campaign.scheduledDate), 'Asia/Jakarta');
         return scheduledDate.getFullYear() === now.getFullYear() &&
                scheduledDate.getMonth() === now.getMonth() &&
                scheduledDate.getDate() === now.getDate();
@@ -71,12 +72,12 @@ export class WaScheduler {
         
       case 'EVERY_WEEK':
         if (!campaign.scheduledDate) return false;
-        const startDay = new Date(campaign.scheduledDate).getDay();
+        const startDay = toZonedTime(new Date(campaign.scheduledDate), 'Asia/Jakarta').getDay();
         return now.getDay() === startDay;
         
       case 'EVERY_MONTH':
         if (!campaign.scheduledDate) return false;
-        const startDate = new Date(campaign.scheduledDate).getDate();
+        const startDate = toZonedTime(new Date(campaign.scheduledDate), 'Asia/Jakarta').getDate();
         return now.getDate() === startDate;
         
       default:
